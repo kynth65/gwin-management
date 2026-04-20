@@ -1,0 +1,129 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  STAFF
+}
+
+enum Platform {
+  SHOPIFY
+  AMAZON
+}
+
+enum ProductStatus {
+  ACTIVE
+  DRAFT
+  ARCHIVED
+}
+
+enum ExportStatus {
+  PENDING
+  DONE
+  FAILED
+}
+
+enum AutomationStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+model User {
+  id          String        @id @default(cuid())
+  email       String        @unique
+  password    String
+  name        String
+  role        Role          @default(STAFF)
+  createdAt   DateTime      @default(now())
+  exports     ExcelExport[]
+
+  @@index([email])
+}
+
+model Store {
+  id          String    @id @default(cuid())
+  name        String
+  platform    Platform
+  accessToken String
+  storeUrl    String
+  lastSyncAt  DateTime?
+  createdAt   DateTime  @default(now())
+  products    Product[]
+  orders      Order[]
+
+  @@index([platform])
+}
+
+model Product {
+  id             String        @id @default(cuid())
+  storeId        String
+  externalId     String
+  title          String
+  sku            String
+  price          Decimal       @db.Decimal(10, 2)
+  compareAtPrice Decimal?      @db.Decimal(10, 2)
+  costPrice      Decimal?      @db.Decimal(10, 2)
+  inventory      Int           @default(0)
+  status         ProductStatus @default(ACTIVE)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  store          Store         @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([externalId, storeId])
+  @@index([sku])
+  @@index([externalId])
+  @@index([storeId])
+}
+
+model Order {
+  id            String   @id @default(cuid())
+  storeId       String
+  externalId    String
+  orderNumber   String
+  customerName  String
+  customerEmail String
+  totalPrice    Decimal  @db.Decimal(10, 2)
+  status        String
+  lineItems     Json
+  createdAt     DateTime @default(now())
+  store         Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@unique([externalId, storeId])
+  @@index([externalId])
+  @@index([storeId])
+  @@index([status])
+}
+
+model ExcelExport {
+  id        String       @id @default(cuid())
+  userId    String
+  fileName  String
+  fileUrl   String
+  type      String
+  status    ExportStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status])
+}
+
+model AutomationLog {
+  id        String           @id @default(cuid())
+  type      String
+  status    AutomationStatus @default(PENDING)
+  message   String
+  payload   Json?
+  createdAt DateTime         @default(now())
+
+  @@index([type])
+  @@index([status])
+  @@index([createdAt])
+}
