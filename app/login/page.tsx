@@ -40,6 +40,7 @@ export default function LoginPage() {
     }
 
     toast.success("Logged in successfully");
+    router.refresh();
     router.push("/dashboard");
   };
 

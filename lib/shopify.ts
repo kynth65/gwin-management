@@ -55,6 +55,7 @@ async function shopifyFetch<T>(endpoint: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function shopifyMutate<T>(
   endpoint: string,
   method: "POST" | "PUT" | "DELETE",

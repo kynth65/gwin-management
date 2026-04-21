@@ -54,7 +54,7 @@ export function OrdersTable({
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) { next.delete(id); } else { next.add(id); }
       return next;
     });
   };
@@ -127,7 +127,7 @@ export function OrdersTable({
               ) : (
                 filtered.map((order) => {
                   const isExpanded = expandedRows.has(order.id);
-                  const lineItems = order.lineItems as LineItem[];
+                  const lineItems = order.lineItems as unknown as LineItem[];
                   return (
                     <>
                       <tr

@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install *)",
+      "Bash(npm install *)",
+      "Bash(npm view *)",
+      "Bash(pnpm build *)",
+      "Bash(pnpm db:generate *)",
+      "Bash(pnpm exec *)",
+      "Bash(npx tsc *)",
+      "Bash(NODE_OPTIONS=\"--max-old-space-size=4096\" pnpm exec *)",
+      "Bash(pnpm db:seed)",
+      "Bash(node node_modules/tsx/dist/cli.mjs prisma/seed.ts)",
+      "Bash(pnpm tsx *)",
+      "Bash(git add *)"
+    ]
+  }
+}
