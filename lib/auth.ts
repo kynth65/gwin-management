@@ -35,10 +35,14 @@ export const authOptions: NextAuthOptions = {
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = (user as unknown as { role: string }).role;
         token.id = user.id;
+      }
+      // When useSession().update({ name }) is called client-side, merge into token
+      if (trigger === "update" && session?.name) {
+        token.name = session.name;
       }
       return token;
     },
