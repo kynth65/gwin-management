@@ -19,7 +19,8 @@
       "Bash(powershell *)",
       "Bash(python -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(json.dumps\\({**d.get\\('dependencies',{}\\), **d.get\\('devDependencies',{}\\)}, indent=2\\)\\)\")",
       "Bash(pnpm add *)",
-      "Bash(git restore *)"
+      "Bash(git restore *)",
+      "PowerShell(git push *)"
     ],
     "defaultMode": "bypassPermissions"
   },
