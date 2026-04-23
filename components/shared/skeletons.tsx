@@ -1,3 +1,29 @@
+export function HeaderSkeleton() {
+  return (
+    <div className="h-16 border-b bg-card flex items-center justify-between px-6 animate-pulse">
+      <div className="h-5 bg-muted rounded w-32" />
+      <div className="flex items-center gap-4">
+        <div className="h-8 w-8 bg-muted rounded-md" />
+        <div className="h-4 bg-muted rounded w-20" />
+      </div>
+    </div>
+  );
+}
+
+export function FormSkeleton() {
+  return (
+    <div className="bg-card border rounded-lg p-6 space-y-4 animate-pulse">
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="space-y-2">
+          <div className="h-4 bg-muted rounded w-24" />
+          <div className="h-10 bg-muted rounded w-full" />
+        </div>
+      ))}
+      <div className="h-10 bg-muted rounded w-32" />
+    </div>
+  );
+}
+
 export function CardSkeleton() {
   return (
     <div className="bg-card border rounded-lg p-6 animate-pulse">
