@@ -1,7 +1,8 @@
 export const dynamic = 'force-dynamic';
+import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import { Header } from "@/components/shared/header";
 import { ProductsTable } from "@/components/products/products-table";
+import { TableSkeleton } from "@/components/shared/skeletons";
 
 async function getProducts() {
   return prisma.product.findMany({
@@ -14,15 +15,17 @@ async function getStores() {
   return prisma.store.findMany({ select: { id: true, name: true } });
 }
 
-export default async function ProductsPage() {
+async function ProductsContent() {
   const [products, stores] = await Promise.all([getProducts(), getStores()]);
+  return <ProductsTable products={products} stores={stores} />;
+}
 
+export default async function ProductsPage() {
   return (
-    <>
-      <Header title="Products" />
-      <div className="flex-1 p-6 overflow-auto">
-        <ProductsTable products={products} stores={stores} />
-      </div>
-    </>
+    <div className="flex-1 p-6 overflow-auto">
+      <Suspense fallback={<TableSkeleton rows={12} />}>
+        <ProductsContent />
+      </Suspense>
+    </div>
   );
 }

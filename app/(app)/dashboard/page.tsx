@@ -1,7 +1,6 @@
 export const dynamic = 'force-dynamic';
 import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
-import { Header } from "@/components/shared/header";
 import { DashboardCards } from "@/components/dashboard/dashboard-cards";
 import { RecentOrdersTable } from "@/components/dashboard/recent-orders-table";
 import { QuickActions } from "@/components/dashboard/quick-actions";
@@ -34,31 +33,42 @@ async function getDashboardData() {
   };
 }
 
-export default async function DashboardPage() {
+async function DashboardContent() {
   const data = await getDashboardData();
-
   return (
     <>
-      <Header title="Dashboard" />
-      <div className="flex-1 p-6 space-y-6 overflow-auto">
-        <Suspense fallback={<div className="grid grid-cols-1 md:grid-cols-4 gap-4"><CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton /></div>}>
-          <DashboardCards
-            totalProducts={data.totalProducts}
-            totalOrders={data.totalOrders}
-            pendingExports={data.pendingExports}
-            lastSyncAt={data.lastSyncAt}
-          />
-        </Suspense>
-
-        <QuickActions />
-
-        <div>
-          <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
-          <Suspense fallback={<TableSkeleton />}>
-            <RecentOrdersTable orders={data.recentOrders} />
-          </Suspense>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <DashboardCards
+          totalProducts={data.totalProducts}
+          totalOrders={data.totalOrders}
+          pendingExports={data.pendingExports}
+          lastSyncAt={data.lastSyncAt}
+        />
+      </div>
+      <QuickActions />
+      <div>
+        <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
+        <RecentOrdersTable orders={data.recentOrders} />
       </div>
     </>
+  );
+}
+
+export default async function DashboardPage() {
+  return (
+    <div className="flex-1 p-6 space-y-6 overflow-auto">
+      <Suspense
+        fallback={
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton />
+            </div>
+            <TableSkeleton rows={8} />
+          </>
+        }
+      >
+        <DashboardContent />
+      </Suspense>
+    </div>
   );
 }
