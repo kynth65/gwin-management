@@ -15,6 +15,7 @@ import {
   LogOut,
   Wind,
   Users,
+  X,
 } from "lucide-react";
 
 const navItems = [
@@ -26,7 +27,12 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings, adminOnly: false },
 ];
 
-export function Sidebar() {
+interface SidebarProps {
+  onClose?: () => void;
+  isMobileOpen?: boolean;
+}
+
+export function Sidebar({ onClose, isMobileOpen }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -37,39 +43,59 @@ export function Sidebar() {
   }, [router]);
 
   return (
-    <aside className="w-64 min-h-screen bg-card border-r flex flex-col">
-      <div className="p-6 flex items-center gap-2 border-b">
-        <Wind className="h-6 w-6 text-primary" />
-        <span className="font-bold text-lg">GWIN Mgmt</span>
+    <aside
+      className={cn(
+        "w-64 bg-gradient-to-b from-[#2d0e38] to-[#1a0822] flex flex-col shadow-2xl",
+        "fixed inset-y-0 left-0 z-40 h-full transition-transform duration-300 ease-in-out lg:transition-none",
+        isMobileOpen ? "translate-x-0" : "-translate-x-full",
+        "lg:translate-x-0 lg:h-screen lg:z-10"
+      )}
+    >
+      <div className="px-5 py-5 flex items-center justify-between border-b border-white/10">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 bg-[#761f7f] rounded-lg flex items-center justify-center shadow-md">
+            <Wind className="h-5 w-5 text-white" />
+          </div>
+          <span className="font-bold text-white text-base tracking-wide">GWIN Mgmt</span>
+        </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden text-white/60 hover:text-white transition-colors p-1 rounded"
+          aria-label="Close menu"
+        >
+          <X className="h-5 w-5" />
+        </button>
       </div>
 
-      <nav className="flex-1 p-4 space-y-1">
+      <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon, adminOnly }) => {
           if (adminOnly && !isAdmin) return null;
+          const isActive = pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
+              onClick={onClose}
               className={cn(
-                "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                pathname.startsWith(href)
-                  ? "bg-primary text-primary-foreground"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                isActive
+                  ? "bg-[#761f7f] text-white shadow-lg"
+                  : "text-white/65 hover:bg-white/10 hover:text-white"
               )}
             >
-              <Icon className="h-4 w-4" />
+              <Icon className="h-4 w-4 shrink-0" />
               {label}
             </Link>
           );
         })}
       </nav>
 
-      <div className="p-4 border-t">
+      <div className="p-4 border-t border-white/10">
         <button
           onClick={() => signOut({ callbackUrl: "/login" })}
-          className="flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-destructive hover:text-destructive-foreground transition-colors w-full"
+          className="flex w-full items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium text-white/60 hover:bg-red-500/20 hover:text-red-300 transition-all duration-150"
         >
-          <LogOut className="h-4 w-4" />
+          <LogOut className="h-4 w-4 shrink-0" />
           Sign Out
         </button>
       </div>
