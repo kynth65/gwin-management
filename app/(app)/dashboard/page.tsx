@@ -37,15 +37,18 @@ async function DashboardContent() {
   const data = await getDashboardData();
   return (
     <>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <DashboardCards
-          totalProducts={data.totalProducts}
-          totalOrders={data.totalOrders}
-          pendingExports={data.pendingExports}
-          lastSyncAt={data.lastSyncAt}
-        />
+      <DashboardCards
+        totalProducts={data.totalProducts}
+        totalOrders={data.totalOrders}
+        pendingExports={data.pendingExports}
+        lastSyncAt={data.lastSyncAt}
+      />
+      <div>
+        <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+          Quick Actions
+        </h2>
+        <QuickActions />
       </div>
-      <QuickActions />
       <div>
         <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
         <RecentOrdersTable orders={data.recentOrders} />
@@ -56,11 +59,11 @@ async function DashboardContent() {
 
 export default async function DashboardPage() {
   return (
-    <div className="flex-1 p-6 space-y-6 overflow-auto">
+    <div className="flex-1 p-4 sm:p-6 space-y-6 overflow-auto">
       <Suspense
         fallback={
           <>
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
               <CardSkeleton /><CardSkeleton /><CardSkeleton /><CardSkeleton />
             </div>
             <TableSkeleton rows={8} />

@@ -25,7 +25,10 @@ export function QuickActions() {
   const handleExcelExport = async () => {
     setExporting(true);
     try {
-      const res = await fetch("/api/excel", { method: "POST", body: JSON.stringify({ type: "products" }) });
+      const res = await fetch("/api/excel", {
+        method: "POST",
+        body: JSON.stringify({ type: "products" }),
+      });
       if (!res.ok) throw new Error("Export failed");
       const data = await res.json();
       toast.success("Excel export ready!", {
@@ -43,7 +46,7 @@ export function QuickActions() {
       <button
         onClick={handleShopifySync}
         disabled={syncing}
-        className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+        className="flex items-center gap-2 px-4 py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
       >
         <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
         {syncing ? "Syncing..." : "Sync Shopify"}
@@ -52,7 +55,7 @@ export function QuickActions() {
       <button
         onClick={handleExcelExport}
         disabled={exporting}
-        className="flex items-center gap-2 px-4 py-2 bg-secondary text-secondary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+        className="flex items-center gap-2 px-4 py-2.5 bg-secondary text-secondary-foreground rounded-lg text-sm font-medium hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
       >
         <FileSpreadsheet className="h-4 w-4" />
         {exporting ? "Generating..." : "Generate Excel"}
@@ -60,7 +63,7 @@ export function QuickActions() {
 
       <Link
         href="/automations"
-        className="flex items-center gap-2 px-4 py-2 border rounded-md text-sm font-medium hover:bg-accent transition"
+        className="flex items-center gap-2 px-4 py-2.5 border rounded-lg text-sm font-medium hover:bg-accent hover:text-accent-foreground active:scale-95 transition-all"
       >
         <Zap className="h-4 w-4" />
         View Automations
