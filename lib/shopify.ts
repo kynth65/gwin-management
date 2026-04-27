@@ -27,6 +27,7 @@ export interface ShopifyOrder {
   customer: { first_name: string; last_name: string } | null;
   total_price: string;
   financial_status: string;
+  fulfillment_status: string | null;
   line_items: ShopifyLineItem[];
   created_at: string;
 }
@@ -37,6 +38,91 @@ export interface ShopifyLineItem {
   quantity: number;
   price: string;
   sku: string;
+}
+
+export interface ShopifyAddress {
+  first_name?: string;
+  last_name?: string;
+  company?: string;
+  address1?: string;
+  address2?: string;
+  city?: string;
+  province?: string;
+  country?: string;
+  zip?: string;
+  phone?: string;
+}
+
+export interface ShopifyTaxLine {
+  title: string;
+  price: string;
+  rate: number;
+}
+
+export interface ShopifyShippingLine {
+  title: string;
+  code: string | null;
+  price: string;
+  discounted_price: string;
+}
+
+export interface ShopifyDiscountCode {
+  code: string;
+  amount: string;
+  type: string;
+}
+
+export interface ShopifyLineItemDetail {
+  id: number;
+  title: string;
+  variant_title?: string | null;
+  quantity: number;
+  price: string;
+  sku: string;
+  total_discount: string;
+  tax_lines: ShopifyTaxLine[];
+  discount_allocations: { amount: string }[];
+  product_id?: number | null;
+  variant_id?: number | null;
+  fulfillment_status?: string | null;
+}
+
+export interface ShopifyOrderDetail {
+  id: number;
+  order_number: number;
+  name: string;
+  email: string;
+  customer: {
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone: string | null;
+    orders_count: number;
+    total_spent: string;
+  } | null;
+  total_price: string;
+  subtotal_price: string;
+  total_tax: string;
+  total_discounts: string;
+  total_shipping_price_set: {
+    shop_money: { amount: string; currency_code: string };
+  } | null;
+  currency: string;
+  financial_status: string;
+  fulfillment_status: string | null;
+  line_items: ShopifyLineItemDetail[];
+  shipping_lines: ShopifyShippingLine[];
+  tax_lines: ShopifyTaxLine[];
+  discount_codes: ShopifyDiscountCode[];
+  note: string | null;
+  note_attributes: { name: string; value: string }[];
+  billing_address: ShopifyAddress | null;
+  shipping_address: ShopifyAddress | null;
+  tags: string;
+  created_at: string;
+  processed_at: string | null;
+  cancel_reason: string | null;
+  cancelled_at: string | null;
 }
 
 async function shopifyFetch<T>(endpoint: string): Promise<T> {
@@ -90,6 +176,13 @@ export async function fetchOrders(limit = 250): Promise<ShopifyOrder[]> {
     `orders.json?limit=${limit}&status=any`
   );
   return data.orders;
+}
+
+export async function fetchOrderById(orderId: string): Promise<ShopifyOrderDetail> {
+  const data = await shopifyFetch<{ order: ShopifyOrderDetail }>(
+    `orders/${orderId}.json`
+  );
+  return data.order;
 }
 
 export async function syncProducts(storeId: string): Promise<{ synced: number }> {
@@ -166,6 +259,7 @@ export async function syncOrders(storeId: string): Promise<{ synced: number }> {
         totalPrice: parseFloat(order.total_price),
         status: order.financial_status,
         lineItems: order.line_items as never,
+        createdAt: new Date(order.created_at),
       },
     });
     synced++;
