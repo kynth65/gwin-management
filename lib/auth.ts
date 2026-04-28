@@ -18,6 +18,7 @@ export const authOptions: NextAuthOptions = {
 
         const user = await prisma.user.findUnique({
           where: { email: credentials.email },
+          include: { role: true },
         });
 
         if (!user) return null;
@@ -29,7 +30,8 @@ export const authOptions: NextAuthOptions = {
           id: user.id,
           email: user.email,
           name: user.name,
-          role: user.role,
+          role: user.role.name,
+          isAdmin: user.role.isAdmin,
         };
       },
     }),
@@ -37,10 +39,11 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user, trigger, session }) {
       if (user) {
-        token.role = (user as unknown as { role: string }).role;
-        token.id = user.id;
+        const u = user as unknown as { role: string; isAdmin: boolean; id: string };
+        token.role = u.role;
+        token.isAdmin = u.isAdmin;
+        token.id = u.id;
       }
-      // When useSession().update({ name }) is called client-side, merge into token
       if (trigger === "update" && session?.name) {
         token.name = session.name;
       }
@@ -48,8 +51,10 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        (session.user as { role: string; id: string }).role = token.role as string;
-        (session.user as { id: string }).id = token.id as string;
+        const u = session.user as { role: string; isAdmin: boolean; id: string };
+        u.role = token.role as string;
+        u.isAdmin = token.isAdmin as boolean;
+        u.id = token.id as string;
       }
       return session;
     },
