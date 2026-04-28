@@ -4,8 +4,19 @@ import { hash } from "bcryptjs";
 const prisma = new PrismaClient();
 
 async function main() {
-  const password = await hash("Admin123", 12);
+  const adminRole = await prisma.userRole.upsert({
+    where: { name: "Admin" },
+    update: { isAdmin: true },
+    create: { id: "role_admin_default", name: "Admin", isAdmin: true },
+  });
 
+  await prisma.userRole.upsert({
+    where: { name: "Staff" },
+    update: { isAdmin: false },
+    create: { id: "role_staff_default", name: "Staff", isAdmin: false },
+  });
+
+  const password = await hash("Admin123", 12);
   const admin = await prisma.user.upsert({
     where: { email: "admin@gwin.com" },
     update: {},
@@ -13,7 +24,7 @@ async function main() {
       email: "admin@gwin.com",
       name: "Admin",
       password,
-      role: "ADMIN",
+      roleId: adminRole.id,
     },
   });
 
