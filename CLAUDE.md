@@ -18,17 +18,38 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 
 ## Architecture
 
-**Next.js 14 App Router** with server components and server actions. Auth is handled by NextAuth.js (credentials provider); the session is extended in `types/index.ts` to include `id` and `role`. Middleware at `app/middleware.ts` protects all routes except `/login`.
+**Next.js 14 App Router** with server components and server actions. Auth is handled by NextAuth.js (credentials provider); the session is extended in `types/index.ts` to include `id`, `role`, and `isAdmin`. Middleware at `app/middleware.ts` protects all routes except `/login`.
 
 **Data flow:**
 1. `lib/prisma.ts` — singleton Prisma client (Neon PostgreSQL)
-2. `lib/shopify.ts` — Shopify Admin REST API wrapper (`syncProducts`, `syncOrders` upsert into DB)
+2. `lib/shopify.ts` — Shopify Admin REST API wrapper (`syncProducts`, `syncOrders` upsert into DB; `fetchOrderById` for live order data)
 3. `lib/excel.ts` — pricing calculations + XLSX generation + Vercel Blob upload
-4. `lib/amazon.ts` — Amazon SP-API helpers
-5. `app/api/` — thin route handlers that call lib functions
-6. `triggers/` — Trigger.dev background jobs (`shopify-sync` every 6h, `excel-export` on demand)
+4. `lib/google-sheets.ts` — Google Sheets integration via `googleapis`; appends rows to a sheet using a base64-encoded service account key (`GOOGLE_SERVICE_ACCOUNT_KEY`)
+5. `lib/amazon.ts` — Amazon SP-API helpers
+6. `lib/auth.ts` — NextAuth config; JWT includes `id`, `role`, and `isAdmin` from `UserRole`
+7. `app/api/` — thin route handlers that call lib functions
+8. `triggers/` — Trigger.dev background jobs (`shopify-sync` every 6h, `excel-export` on demand)
 
 **Key design:** Shopify products are stored as one DB row **per variant** (not per product). `externalId` is the variant ID, not the product ID. The `@@unique([externalId, storeId])` constraint enables idempotent upserts.
+
+## Routes
+
+| Route | Purpose |
+|---|---|
+| `app/api/users/` | CRUD for users; admin-only create/delete |
+| `app/api/roles/` | CRUD for `UserRole`; admin-only create/delete |
+| `app/api/tasks/` | Task inbox/sent list + create (staff cannot assign to admins) |
+| `app/api/tasks/[id]/` | Update task status/priority, delete |
+| `app/api/orders/[id]/add-to-excel/` | Append order rows to Google Sheet (`gwin` or `mrcooldirect`) |
+| `app/api/sync/orders/` | Manual Shopify order sync trigger |
+| `app/api/profile/` | Update current user's name |
+| `app/api/profile/password/` | Change current user's password |
+
+## Authorization
+
+- `session.user.isAdmin` (from `UserRole.isAdmin`) gates admin-only API actions.
+- Staff members cannot assign tasks to admin users — enforced in `app/api/tasks/route.ts`.
+- Middleware protects: `/dashboard`, `/products`, `/orders`, `/automations`, `/settings`, `/users`, `/tasks`.
 
 ## Pricing Logic
 
@@ -39,10 +60,24 @@ All pricing math is in `lib/excel.ts`:
 
 ## Database Schema Notes
 
-- `Product.lineItems` is stored as `Json` (raw Shopify line items array)
-- `AutomationLog` is append-only — never updated, only created
+- `UserRole` — named roles with `isAdmin` flag; every `User` belongs to one role via `roleId`
+- `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `PENDING | ONGOING | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`
+- `Order.lineItems` is stored as `Json` (raw Shopify line items array)
+- `AutomationLog` is append-only — never updated, only created; `SHEET_EXPORT` type logs Google Sheets writes
 - Multi-store: every `Product` and `Order` belongs to a `Store`; store platform is `SHOPIFY | AMAZON`
+
+## Google Sheets Export
+
+`app/api/orders/[id]/add-to-excel/route.ts` appends one row per line item to a store-specific Google Sheet. Sheet IDs are resolved by `sheetType` key (`gwin` → `GOOGLE_SHEET_GWIN_ID`, `mrcooldirect` → `GOOGLE_SHEET_MRCOOLDIRECT_ID`). It attempts a live Shopify fetch for shipping/phone data and falls back to DB values if unavailable.
 
 ## Environment Variables
 
-See `.env.example`. Required for local dev: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`. Shopify/Amazon/Trigger.dev/Blob vars are needed for sync features to work.
+See `.env.example`. Required for local dev: `DATABASE_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`.
+
+| Group | Variables |
+|---|---|
+| Shopify | `SHOPIFY_API_KEY`, `SHOPIFY_API_SECRET`, `SHOPIFY_STORE_URL`, `SHOPIFY_ACCESS_TOKEN` |
+| Amazon | `AMAZON_CLIENT_ID`, `AMAZON_CLIENT_SECRET`, `AMAZON_REFRESH_TOKEN`, `AMAZON_MARKETPLACE_ID` |
+| Google Sheets | `GOOGLE_SERVICE_ACCOUNT_KEY` (base64 JSON), `GOOGLE_SHEET_GWIN_ID`, `GOOGLE_SHEET_MRCOOLDIRECT_ID` |
+| Trigger.dev | `TRIGGER_API_KEY` |
+| Vercel Blob | `BLOB_READ_WRITE_TOKEN` |

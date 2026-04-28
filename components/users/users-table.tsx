@@ -5,27 +5,43 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 
+type RoleOption = {
+  id: string;
+  name: string;
+  isAdmin: boolean;
+};
+
 type UserRow = {
   id: string;
   name: string;
   email: string;
-  role: "ADMIN" | "STAFF";
+  role: RoleOption;
   createdAt: Date;
 };
 
-export function UsersTable({ users: initial, currentUserId }: { users: UserRow[]; currentUserId: string }) {
+export function UsersTable({
+  users: initial,
+  roles,
+  currentUserId,
+}: {
+  users: UserRow[];
+  roles: RoleOption[];
+  currentUserId: string;
+}) {
   const [users, setUsers] = useState(initial);
   const [deleting, setDeleting] = useState<string | null>(null);
   const router = useRouter();
 
-  async function handleRoleChange(id: string, role: "ADMIN" | "STAFF") {
+  async function handleRoleChange(id: string, roleId: string) {
     const prev = users;
-    setUsers((u) => u.map((x) => (x.id === id ? { ...x, role } : x)));
+    const newRole = roles.find((r) => r.id === roleId);
+    if (!newRole) return;
+    setUsers((u) => u.map((x) => (x.id === id ? { ...x, role: newRole } : x)));
     try {
       const res = await fetch(`/api/users/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role }),
+        body: JSON.stringify({ roleId }),
       });
       if (!res.ok) throw new Error();
       toast.success("Role updated");
@@ -81,13 +97,16 @@ export function UsersTable({ users: initial, currentUserId }: { users: UserRow[]
               <td className="px-4 py-3 text-muted-foreground">{user.email}</td>
               <td className="px-4 py-3">
                 <select
-                  value={user.role}
-                  onChange={(e) => handleRoleChange(user.id, e.target.value as "ADMIN" | "STAFF")}
+                  value={user.role.id}
+                  onChange={(e) => handleRoleChange(user.id, e.target.value)}
                   disabled={user.id === currentUserId}
                   className="px-2 py-1 rounded border text-xs font-medium bg-background focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <option value="ADMIN">ADMIN</option>
-                  <option value="STAFF">STAFF</option>
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>
+                      {role.name}
+                    </option>
+                  ))}
                 </select>
               </td>
               <td className="px-4 py-3 text-muted-foreground">

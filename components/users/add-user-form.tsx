@@ -7,22 +7,33 @@ import { toast } from "sonner";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+type RoleOption = {
+  id: string;
+  name: string;
+  isAdmin: boolean;
+};
+
 const schema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Minimum 6 characters"),
-  role: z.enum(["ADMIN", "STAFF"]),
+  roleId: z.string().min(1, "Role is required"),
 });
 
 type FormData = z.infer<typeof schema>;
 
-export function AddUserForm() {
+export function AddUserForm({ roles }: { roles: RoleOption[] }) {
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
+  const {
+    register,
+    handleSubmit,
+    reset,
+    formState: { errors },
+  } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { role: "STAFF" },
+    defaultValues: { roleId: roles[0]?.id ?? "" },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -36,7 +47,7 @@ export function AddUserForm() {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       toast.success(`User "${data.name}" added successfully`);
-      reset();
+      reset({ roleId: roles[0]?.id ?? "" });
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add user");
@@ -77,18 +88,26 @@ export function AddUserForm() {
             placeholder="Min. 6 characters"
             className="w-full px-3 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           />
-          {errors.password && <p className="text-destructive text-xs mt-1">{errors.password.message}</p>}
+          {errors.password && (
+            <p className="text-destructive text-xs mt-1">{errors.password.message}</p>
+          )}
         </div>
 
         <div>
           <label className="block text-sm font-medium mb-1">Role</label>
           <select
-            {...register("role")}
+            {...register("roleId")}
             className="w-full px-3 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
           >
-            <option value="STAFF">Staff</option>
-            <option value="ADMIN">Admin</option>
+            {roles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
           </select>
+          {errors.roleId && (
+            <p className="text-destructive text-xs mt-1">{errors.roleId.message}</p>
+          )}
         </div>
       </div>
 

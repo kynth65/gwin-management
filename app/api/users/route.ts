@@ -11,17 +11,23 @@ const createUserSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
-  role: z.enum(["ADMIN", "STAFF"]).default("STAFF"),
+  roleId: z.string().min(1, "Role is required"),
 });
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session?.user.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const users = await prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: { select: { id: true, name: true, isAdmin: true } },
+      createdAt: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 
@@ -30,7 +36,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session?.user.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -40,13 +46,25 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 });
   }
 
-  const { name, email, password, role } = parsed.data;
+  const { name, email, password, roleId } = parsed.data;
+
+  const roleExists = await prisma.userRole.findUnique({ where: { id: roleId } });
+  if (!roleExists) {
+    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+
   const hashedPassword = await hash(password, 10);
 
   try {
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword, role },
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      data: { name, email, password: hashedPassword, roleId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: { select: { id: true, name: true, isAdmin: true } },
+        createdAt: true,
+      },
     });
     return NextResponse.json(user, { status: 201 });
   } catch {

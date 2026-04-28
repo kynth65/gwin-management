@@ -17,6 +17,7 @@ import {
   Truck,
   CreditCard,
 } from "lucide-react";
+import { AddToExcelButton } from "@/components/orders/add-to-excel-button";
 
 const financialStatusColors: Record<string, string> = {
   paid: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
@@ -140,7 +141,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
               )}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={dbOrder.status} colors={financialStatusColors} />
             {shopify?.fulfillment_status && (
               <StatusBadge status={shopify.fulfillment_status} colors={fulfillmentColors} />
@@ -150,6 +151,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
                 Cancelled
               </span>
             )}
+            <AddToExcelButton orderId={dbOrder.id} />
           </div>
         </div>
 

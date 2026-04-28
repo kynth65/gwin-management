@@ -5,12 +5,12 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 
 const updateSchema = z.object({
-  role: z.enum(["ADMIN", "STAFF"]),
+  roleId: z.string().min(1),
 });
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session?.user.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -20,10 +20,21 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
+  const roleExists = await prisma.userRole.findUnique({ where: { id: parsed.data.roleId } });
+  if (!roleExists) {
+    return NextResponse.json({ error: "Role not found" }, { status: 400 });
+  }
+
   const user = await prisma.user.update({
     where: { id: params.id },
-    data: { role: parsed.data.role },
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    data: { roleId: parsed.data.roleId },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: { select: { id: true, name: true, isAdmin: true } },
+      createdAt: true,
+    },
   });
 
   return NextResponse.json(user);
@@ -31,7 +42,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") {
+  if (!session?.user.isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

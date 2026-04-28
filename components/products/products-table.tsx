@@ -12,11 +12,10 @@ import {
   type SortingState,
   type ColumnFiltersState,
 } from "@tanstack/react-table";
-import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { calcRetailPrice, calcCompareAtPrice } from "@/lib/excel";
 import type { Product } from "@prisma/client";
-import { FileSpreadsheet, ArrowUpDown } from "lucide-react";
+import { ArrowUpDown } from "lucide-react";
 
 type ProductWithStore = Product & { store: { id: string; name: string } };
 
@@ -30,33 +29,11 @@ export function ProductsTable({
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([]);
   const [globalFilter, setGlobalFilter] = useState("");
-  const [rowSelection, setRowSelection] = useState({});
   const [storeFilter, setStoreFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [exporting, setExporting] = useState(false);
 
   const columns = useMemo<ColumnDef<ProductWithStore>[]>(
     () => [
-      {
-        id: "select",
-        header: ({ table }) => (
-          <input
-            type="checkbox"
-            checked={table.getIsAllPageRowsSelected()}
-            onChange={table.getToggleAllPageRowsSelectedHandler()}
-            className="rounded"
-          />
-        ),
-        cell: ({ row }) => (
-          <input
-            type="checkbox"
-            checked={row.getIsSelected()}
-            onChange={row.getToggleSelectedHandler()}
-            className="rounded"
-          />
-        ),
-        size: 40,
-      },
       {
         accessorKey: "sku",
         header: ({ column }) => (
@@ -131,46 +108,16 @@ export function ProductsTable({
   const table = useReactTable({
     data: filteredData,
     columns,
-    state: { sorting, columnFilters, globalFilter, rowSelection },
+    state: { sorting, columnFilters, globalFilter },
     onSortingChange: setSorting,
     onColumnFiltersChange: setColumnFilters,
     onGlobalFilterChange: setGlobalFilter,
-    onRowSelectionChange: setRowSelection,
     getCoreRowModel: getCoreRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize: 20 } },
   });
-
-  const handleBulkExport = async () => {
-    const selectedIds = Object.keys(rowSelection).map(
-      (idx) => filteredData[parseInt(idx)]?.id
-    ).filter(Boolean);
-
-    if (selectedIds.length === 0) {
-      toast.error("Select at least one product to export");
-      return;
-    }
-
-    setExporting(true);
-    try {
-      const res = await fetch("/api/excel", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "products", ids: selectedIds }),
-      });
-      if (!res.ok) throw new Error("Export failed");
-      const data = await res.json();
-      toast.success(`Exported ${selectedIds.length} products`, {
-        action: { label: "Download", onClick: () => window.open(data.url) },
-      });
-    } catch {
-      toast.error("Export failed");
-    } finally {
-      setExporting(false);
-    }
-  };
 
   return (
     <div className="space-y-4">
@@ -202,14 +149,6 @@ export function ProductsTable({
           <option value="DRAFT">Draft</option>
           <option value="ARCHIVED">Archived</option>
         </select>
-        <button
-          onClick={handleBulkExport}
-          disabled={exporting || Object.keys(rowSelection).length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50 ml-auto"
-        >
-          <FileSpreadsheet className="h-4 w-4" />
-          {exporting ? "Exporting..." : `Export Selected (${Object.keys(rowSelection).length})`}
-        </button>
       </div>
 
       {/* Table */}

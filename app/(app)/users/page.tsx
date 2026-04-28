@@ -6,23 +6,48 @@ import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { UsersTable } from "@/components/users/users-table";
 import { AddUserForm } from "@/components/users/add-user-form";
+import { RolesTable } from "@/components/users/roles-table";
+import { AddRoleForm } from "@/components/users/add-role-form";
 import { TableSkeleton } from "@/components/shared/skeletons";
 
 async function getUsers() {
   return prisma.user.findMany({
-    select: { id: true, name: true, email: true, role: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: { select: { id: true, name: true, isAdmin: true } },
+      createdAt: true,
+    },
     orderBy: { createdAt: "desc" },
   });
 }
 
+async function getRoles() {
+  return prisma.userRole.findMany({
+    orderBy: { name: "asc" },
+    include: { _count: { select: { users: true } } },
+  });
+}
+
 async function UsersContent({ currentUserId }: { currentUserId: string }) {
-  const users = await getUsers();
-  return <UsersTable users={users} currentUserId={currentUserId} />;
+  const [users, roles] = await Promise.all([getUsers(), getRoles()]);
+  return <UsersTable users={users} roles={roles} currentUserId={currentUserId} />;
+}
+
+async function RolesContent() {
+  const roles = await getRoles();
+  return <RolesTable roles={roles} />;
+}
+
+async function AddUserContent() {
+  const roles = await getRoles();
+  return <AddUserForm roles={roles} />;
 }
 
 export default async function UsersPage() {
   const session = await getServerSession(authOptions);
-  if (!session || session.user.role !== "ADMIN") redirect("/dashboard");
+  if (!session || !session.user.isAdmin) redirect("/dashboard");
 
   return (
     <div className="flex-1 p-6 space-y-8 overflow-auto max-w-4xl">
@@ -32,9 +57,26 @@ export default async function UsersPage() {
           <UsersContent currentUserId={session.user.id} />
         </Suspense>
       </div>
+
       <div>
         <h2 className="text-lg font-semibold mb-4">Add New User</h2>
-        <AddUserForm />
+        <Suspense fallback={<TableSkeleton rows={2} />}>
+          <AddUserContent />
+        </Suspense>
+      </div>
+
+      <div>
+        <h2 className="text-lg font-semibold mb-1">Role Management</h2>
+        <p className="text-sm text-muted-foreground mb-4">
+          Define the roles users can be assigned to. Roles with admin privileges have full access.
+        </p>
+        <Suspense fallback={<TableSkeleton rows={3} />}>
+          <RolesContent />
+        </Suspense>
+        <div className="mt-6">
+          <h3 className="text-sm font-semibold mb-3">Add New Role</h3>
+          <AddRoleForm />
+        </div>
       </div>
     </div>
   );
