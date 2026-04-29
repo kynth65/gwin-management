@@ -119,7 +119,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
   return (
     <div className="flex-1 p-6 overflow-auto">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="space-y-6">
 
         {/* Back link */}
         <Link
