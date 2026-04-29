@@ -95,126 +95,136 @@ export function ProfileForm({ initialName, email, role, createdAt }: ProfileForm
   const labelClass = "block text-sm font-medium mb-1";
 
   return (
-    <div className="space-y-8">
-      {/* Account Overview */}
-      <div className="bg-card border rounded-lg p-6 space-y-4">
-        <h2 className="text-base font-semibold">Account Overview</h2>
-        <div className="grid grid-cols-2 gap-4 text-sm">
-          <div>
-            <p className="text-muted-foreground">Email</p>
-            <p className="font-medium">{email}</p>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Role</p>
-            <span
-              className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                role === "ADMIN"
-                  ? "bg-primary/10 text-primary"
-                  : "bg-muted text-muted-foreground"
-              }`}
-            >
-              {role}
-            </span>
-          </div>
-          <div>
-            <p className="text-muted-foreground">Member since</p>
-            <p className="font-medium">
-              {new Date(createdAt).toLocaleDateString("en-US", {
-                year: "numeric",
-                month: "long",
-                day: "numeric",
-              })}
-            </p>
-          </div>
-        </div>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold">Profile</h1>
+        <p className="text-sm text-muted-foreground mt-1">Manage your account details and security settings.</p>
       </div>
 
-      {/* Update Name */}
-      <form
-        onSubmit={nameForm.handleSubmit(onUpdateName)}
-        className="bg-card border rounded-lg p-6 space-y-4"
-      >
-        <h2 className="text-base font-semibold">Display Name</h2>
-        <div className="max-w-sm">
-          <label className={labelClass}>Full Name</label>
-          <input
-            {...nameForm.register("name")}
-            placeholder="Your name"
-            className={inputClass}
-          />
-          {nameForm.formState.errors.name && (
-            <p className="text-destructive text-xs mt-1">
-              {nameForm.formState.errors.name.message}
-            </p>
-          )}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-start">
+        {/* Left column: Account Overview */}
+        <div className="bg-card border rounded-lg p-6 space-y-4">
+          <h2 className="text-base font-semibold">Account Overview</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+            <div>
+              <p className="text-muted-foreground">Email</p>
+              <p className="font-medium break-all">{email}</p>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Role</p>
+              <span
+                className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                  role === "ADMIN"
+                    ? "bg-primary/10 text-primary"
+                    : "bg-muted text-muted-foreground"
+                }`}
+              >
+                {role}
+              </span>
+            </div>
+            <div>
+              <p className="text-muted-foreground">Member since</p>
+              <p className="font-medium">
+                {new Date(createdAt).toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
+                })}
+              </p>
+            </div>
+          </div>
         </div>
-        <button
-          type="submit"
-          disabled={nameLoading}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-        >
-          {nameLoading ? "Saving..." : "Save Name"}
-        </button>
-      </form>
 
-      {/* Change Password */}
-      <form
-        onSubmit={passwordForm.handleSubmit(onChangePassword)}
-        className="bg-card border rounded-lg p-6 space-y-4"
-      >
-        <h2 className="text-base font-semibold">Change Password</h2>
-        <div className="max-w-sm space-y-4">
-          <div>
-            <label className={labelClass}>Current Password</label>
-            <input
-              {...passwordForm.register("currentPassword")}
-              type="password"
-              placeholder="Enter current password"
-              className={inputClass}
-            />
-            {passwordForm.formState.errors.currentPassword && (
-              <p className="text-destructive text-xs mt-1">
-                {passwordForm.formState.errors.currentPassword.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={labelClass}>New Password</label>
-            <input
-              {...passwordForm.register("newPassword")}
-              type="password"
-              placeholder="Min. 6 characters"
-              className={inputClass}
-            />
-            {passwordForm.formState.errors.newPassword && (
-              <p className="text-destructive text-xs mt-1">
-                {passwordForm.formState.errors.newPassword.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <label className={labelClass}>Confirm New Password</label>
-            <input
-              {...passwordForm.register("confirmPassword")}
-              type="password"
-              placeholder="Repeat new password"
-              className={inputClass}
-            />
-            {passwordForm.formState.errors.confirmPassword && (
-              <p className="text-destructive text-xs mt-1">
-                {passwordForm.formState.errors.confirmPassword.message}
-              </p>
-            )}
-          </div>
+        {/* Right column: Update Name + Change Password */}
+        <div className="space-y-6">
+          {/* Update Name */}
+          <form
+            onSubmit={nameForm.handleSubmit(onUpdateName)}
+            className="bg-card border rounded-lg p-6 space-y-4"
+          >
+            <h2 className="text-base font-semibold">Display Name</h2>
+            <div>
+              <label className={labelClass}>Full Name</label>
+              <input
+                {...nameForm.register("name")}
+                placeholder="Your name"
+                className={inputClass}
+              />
+              {nameForm.formState.errors.name && (
+                <p className="text-destructive text-xs mt-1">
+                  {nameForm.formState.errors.name.message}
+                </p>
+              )}
+            </div>
+            <button
+              type="submit"
+              disabled={nameLoading}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+            >
+              {nameLoading ? "Saving..." : "Save Name"}
+            </button>
+          </form>
+
+          {/* Change Password */}
+          <form
+            onSubmit={passwordForm.handleSubmit(onChangePassword)}
+            className="bg-card border rounded-lg p-6 space-y-4"
+          >
+            <h2 className="text-base font-semibold">Change Password</h2>
+            <div className="space-y-4">
+              <div>
+                <label className={labelClass}>Current Password</label>
+                <input
+                  {...passwordForm.register("currentPassword")}
+                  type="password"
+                  placeholder="Enter current password"
+                  className={inputClass}
+                />
+                {passwordForm.formState.errors.currentPassword && (
+                  <p className="text-destructive text-xs mt-1">
+                    {passwordForm.formState.errors.currentPassword.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={labelClass}>New Password</label>
+                <input
+                  {...passwordForm.register("newPassword")}
+                  type="password"
+                  placeholder="Min. 6 characters"
+                  className={inputClass}
+                />
+                {passwordForm.formState.errors.newPassword && (
+                  <p className="text-destructive text-xs mt-1">
+                    {passwordForm.formState.errors.newPassword.message}
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={labelClass}>Confirm New Password</label>
+                <input
+                  {...passwordForm.register("confirmPassword")}
+                  type="password"
+                  placeholder="Repeat new password"
+                  className={inputClass}
+                />
+                {passwordForm.formState.errors.confirmPassword && (
+                  <p className="text-destructive text-xs mt-1">
+                    {passwordForm.formState.errors.confirmPassword.message}
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={passwordLoading}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
+            >
+              {passwordLoading ? "Updating..." : "Change Password"}
+            </button>
+          </form>
         </div>
-        <button
-          type="submit"
-          disabled={passwordLoading}
-          className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
-        >
-          {passwordLoading ? "Updating..." : "Change Password"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }

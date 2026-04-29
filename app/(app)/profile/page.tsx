@@ -17,7 +17,7 @@ export default async function ProfilePage() {
   if (!user) redirect("/login");
 
   return (
-    <div className="flex-1 p-6 overflow-auto max-w-2xl">
+    <div className="flex-1 p-6 overflow-auto">
       <ProfileForm
         initialName={user.name}
         email={user.email}
