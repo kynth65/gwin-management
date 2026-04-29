@@ -23,25 +23,40 @@ export const shopifySyncTask = schedules.task({
     let totalProducts = 0;
     let totalOrders = 0;
 
-    for (const store of stores) {
-      try {
-        const [p, o] = await Promise.all([
-          syncProducts(store.id),
-          syncOrders(store.id),
-        ]);
-        totalProducts += p.synced;
-        totalOrders += o.synced;
-      } catch (err) {
-        const message = err instanceof Error ? err.message : "Sync failed";
-        await prisma.automationLog.create({
-          data: {
-            type: "SHOPIFY_SYNC",
-            status: "FAILED",
-            message: `Store ${store.name}: ${message}`,
-            payload: { storeId: store.id },
-          },
+    // Sync all stores concurrently; products + orders run in parallel per store.
+    const settled = await Promise.allSettled(
+      stores.map(async (store) => {
+        const [p, o] = await Promise.all([syncProducts(store.id), syncOrders(store.id)]);
+        return { storeName: store.name, products: p.synced, orders: o.synced };
+      })
+    );
+
+    const syncErrors: { storeName: string; error: string }[] = [];
+
+    settled.forEach((item, i) => {
+      if (item.status === "fulfilled") {
+        totalProducts += item.value.products;
+        totalOrders += item.value.orders;
+      } else {
+        syncErrors.push({
+          storeName: stores[i].name,
+          error: item.reason instanceof Error ? item.reason.message : "Sync failed",
         });
       }
+    });
+
+    if (syncErrors.length > 0) {
+      await Promise.all(
+        syncErrors.map((e) =>
+          prisma.automationLog.create({
+            data: {
+              type: "SHOPIFY_SYNC",
+              status: "FAILED",
+              message: `Store ${e.storeName}: ${e.error}`,
+            },
+          })
+        )
+      );
     }
 
     await prisma.automationLog.create({

@@ -31,12 +31,16 @@ export function AddStoreForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...data, platform: "SHOPIFY" }),
       });
-      if (!res.ok) throw new Error("Failed to add store");
+      const json = await res.json() as { error?: string };
+      if (!res.ok) {
+        toast.error(json.error ?? "Failed to connect store");
+        return;
+      }
       toast.success("Store connected successfully!");
       reset();
       router.refresh();
     } catch {
-      toast.error("Failed to connect store");
+      toast.error("Network error — please try again");
     } finally {
       setLoading(false);
     }
@@ -48,7 +52,7 @@ export function AddStoreForm() {
         <label className="block text-sm font-medium mb-1">Store Name</label>
         <input
           {...register("name")}
-          placeholder="My Shopify Store"
+          placeholder="e.g. Gwin Main Store"
           className="w-full px-3 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
         />
         {errors.name && <p className="text-destructive text-xs mt-1">{errors.name.message}</p>}
@@ -58,20 +62,28 @@ export function AddStoreForm() {
         <label className="block text-sm font-medium mb-1">Store URL</label>
         <input
           {...register("storeUrl")}
-          placeholder="my-store.myshopify.com"
+          placeholder="your-store.myshopify.com"
+          autoComplete="off"
           className="w-full px-3 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
         />
+        <p className="text-xs text-muted-foreground mt-1">
+          Paste your Shopify store domain — e.g. <span className="font-mono">your-store.myshopify.com</span>. Full URLs are accepted too.
+        </p>
         {errors.storeUrl && <p className="text-destructive text-xs mt-1">{errors.storeUrl.message}</p>}
       </div>
 
       <div>
-        <label className="block text-sm font-medium mb-1">Access Token</label>
+        <label className="block text-sm font-medium mb-1">Admin API Access Token</label>
         <input
           {...register("accessToken")}
           type="password"
-          placeholder="shpat_..."
+          placeholder="shpat_xxxxxxxxxxxxxxxxxxxx"
+          autoComplete="off"
           className="w-full px-3 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
         />
+        <p className="text-xs text-muted-foreground mt-1">
+          Found in Shopify Admin → Settings → Apps and sales channels → Develop apps → your app → API credentials.
+        </p>
         {errors.accessToken && <p className="text-destructive text-xs mt-1">{errors.accessToken.message}</p>}
       </div>
 
@@ -80,7 +92,7 @@ export function AddStoreForm() {
         disabled={loading}
         className="px-4 py-2 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:opacity-90 transition disabled:opacity-50"
       >
-        {loading ? "Connecting..." : "Connect Store"}
+        {loading ? "Verifying & connecting..." : "Connect Store"}
       </button>
     </form>
   );

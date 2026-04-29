@@ -1,7 +1,5 @@
 import crypto from "crypto";
 
-const SHOPIFY_STORE_URL = process.env.SHOPIFY_STORE_URL!;
-const SHOPIFY_ACCESS_TOKEN = process.env.SHOPIFY_ACCESS_TOKEN!;
 const SHOPIFY_API_SECRET = process.env.SHOPIFY_API_SECRET!;
 const API_VERSION = "2024-10";
 
@@ -125,72 +123,61 @@ export interface ShopifyOrderDetail {
   cancelled_at: string | null;
 }
 
-async function shopifyFetch<T>(endpoint: string): Promise<T> {
-  const url = `https://${SHOPIFY_STORE_URL}/admin/api/${API_VERSION}/${endpoint}`;
-  const res = await fetch(url, {
-    headers: {
-      "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-      "Content-Type": "application/json",
-    },
-  });
-
-  if (!res.ok) {
-    throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json() as Promise<T>;
+// Parses Shopify's Link header to get the next page cursor URL.
+// Format: <https://...?page_info=xxx>; rel="next"
+function parseLinkNext(linkHeader: string | null): string | null {
+  if (!linkHeader) return null;
+  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+  return match ? match[1] : null;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-async function shopifyMutate<T>(
-  endpoint: string,
-  method: "POST" | "PUT" | "DELETE",
-  body?: unknown
-): Promise<T> {
-  const url = `https://${SHOPIFY_STORE_URL}/admin/api/${API_VERSION}/${endpoint}`;
-  const res = await fetch(url, {
-    method,
-    headers: {
-      "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-
-  if (!res.ok) {
-    throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
-  }
-
-  return res.json() as Promise<T>;
-}
-
-export async function fetchProducts(limit = 250): Promise<ShopifyProduct[]> {
-  const data = await shopifyFetch<{ products: ShopifyProduct[] }>(
-    `products.json?limit=${limit}&status=any`
+export async function fetchOrderById(orderId: string, storeId: string): Promise<ShopifyOrderDetail> {
+  const { prisma } = await import("./prisma");
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) throw new Error(`Store not found: ${storeId}`);
+  const res = await fetch(
+    `https://${store.storeUrl}/admin/api/${API_VERSION}/orders/${orderId}.json`,
+    {
+      headers: { "X-Shopify-Access-Token": store.accessToken },
+      signal: AbortSignal.timeout(10000),
+    }
   );
-  return data.products;
-}
-
-export async function fetchOrders(limit = 250): Promise<ShopifyOrder[]> {
-  const data = await shopifyFetch<{ orders: ShopifyOrder[] }>(
-    `orders.json?limit=${limit}&status=any`
-  );
-  return data.orders;
-}
-
-export async function fetchOrderById(orderId: string): Promise<ShopifyOrderDetail> {
-  const data = await shopifyFetch<{ order: ShopifyOrderDetail }>(
-    `orders/${orderId}.json`
-  );
+  if (!res.ok) throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
+  const data = await res.json() as { order: ShopifyOrderDetail };
   return data.order;
 }
 
-export async function syncProducts(storeId: string): Promise<{ synced: number }> {
+export async function syncProducts(storeId: string): Promise<{ synced: number; fetched: number }> {
   const { prisma } = await import("./prisma");
-  const products = await fetchProducts();
 
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) throw new Error(`Store not found: ${storeId}`);
+
+  // Paginate through all products using Shopify's cursor-based Link header.
+  const allProducts: ShopifyProduct[] = [];
+  let nextUrl: string | null =
+    `https://${store.storeUrl}/admin/api/${API_VERSION}/products.json?limit=250&status=any`;
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl, {
+      headers: { "X-Shopify-Access-Token": store.accessToken },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
+    const data = await res.json() as { products?: ShopifyProduct[]; errors?: unknown };
+    if (!data.products) {
+      throw new Error(
+        `Shopify did not return a products array. This usually means the access token is missing the "read_products" scope. Response: ${JSON.stringify(data)}`
+      );
+    }
+    allProducts.push(...data.products);
+    nextUrl = parseLinkNext(res.headers.get("link"));
+  }
+
+  const fetched = allProducts.length;
   let synced = 0;
-  for (const product of products) {
+
+  for (const product of allProducts) {
     for (const variant of product.variants) {
       await prisma.product.upsert({
         where: { externalId_storeId: { externalId: String(variant.id), storeId } } as never,
@@ -227,45 +214,72 @@ export async function syncProducts(storeId: string): Promise<{ synced: number }>
     data: { lastSyncAt: new Date() },
   });
 
-  return { synced };
+  return { synced, fetched };
 }
 
 export async function syncOrders(storeId: string): Promise<{ synced: number }> {
   const { prisma } = await import("./prisma");
-  const orders = await fetchOrders();
 
-  let synced = 0;
-  for (const order of orders) {
-    const customerName = order.customer
-      ? `${order.customer.first_name} ${order.customer.last_name}`.trim()
-      : "Guest";
+  const store = await prisma.store.findUnique({ where: { id: storeId } });
+  if (!store) throw new Error(`Store not found: ${storeId}`);
 
-    await prisma.order.upsert({
-      where: { externalId_storeId: { externalId: String(order.id), storeId } } as never,
-      update: {
-        orderNumber: String(order.order_number),
-        customerName,
-        customerEmail: order.email || "",
-        totalPrice: parseFloat(order.total_price),
-        status: order.financial_status,
-        lineItems: order.line_items as never,
-      },
-      create: {
-        storeId,
-        externalId: String(order.id),
-        orderNumber: String(order.order_number),
-        customerName,
-        customerEmail: order.email || "",
-        totalPrice: parseFloat(order.total_price),
-        status: order.financial_status,
-        lineItems: order.line_items as never,
-        createdAt: new Date(order.created_at),
-      },
-    });
-    synced++;
+  // Delta sync: only request orders changed since the last successful sync.
+  // On first run (lastSyncAt is null), fetch all orders.
+  const params = new URLSearchParams({ limit: "250", status: "any" });
+  if (store.lastSyncAt) {
+    params.set("updated_at_min", store.lastSyncAt.toISOString());
   }
 
-  return { synced };
+  // Paginate through all result pages using Shopify's cursor-based Link header.
+  const orders: ShopifyOrder[] = [];
+  let nextUrl: string | null =
+    `https://${store.storeUrl}/admin/api/${API_VERSION}/orders.json?${params}`;
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl, {
+      headers: { "X-Shopify-Access-Token": store.accessToken },
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) throw new Error(`Shopify API error: ${res.status} ${res.statusText}`);
+    const data = await res.json() as { orders: ShopifyOrder[] };
+    orders.push(...data.orders);
+    nextUrl = parseLinkNext(res.headers.get("link"));
+  }
+
+  if (orders.length === 0) return { synced: 0 };
+
+  // Batch all upserts into a single DB transaction instead of N sequential round-trips.
+  await prisma.$transaction(
+    orders.map((order) => {
+      const customerName = order.customer
+        ? `${order.customer.first_name} ${order.customer.last_name}`.trim()
+        : "Guest";
+      return prisma.order.upsert({
+        where: { externalId_storeId: { externalId: String(order.id), storeId } } as never,
+        update: {
+          orderNumber: String(order.order_number),
+          customerName,
+          customerEmail: order.email || "",
+          totalPrice: parseFloat(order.total_price),
+          status: order.financial_status,
+          lineItems: order.line_items as never,
+        },
+        create: {
+          storeId,
+          externalId: String(order.id),
+          orderNumber: String(order.order_number),
+          customerName,
+          customerEmail: order.email || "",
+          totalPrice: parseFloat(order.total_price),
+          status: order.financial_status,
+          lineItems: order.line_items as never,
+          createdAt: new Date(order.created_at),
+        },
+      });
+    })
+  );
+
+  return { synced: orders.length };
 }
 
 export function verifyWebhookSignature(
