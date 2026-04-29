@@ -2,10 +2,18 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { cn, formatDate } from "@/lib/utils";
 import { CreateTaskDialog } from "./create-task-dialog";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
-import { ChevronDown, Trash2, ClipboardList, AlertTriangle } from "lucide-react";
+import {
+  ChevronDown,
+  Trash2,
+  ClipboardList,
+  AlertTriangle,
+  Clock,
+  Eye,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { AssignableUser, TaskWithUsers, TaskStatus, TaskPriority } from "@/types";
 
@@ -53,6 +61,19 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; className: string; 
     dot: "bg-emerald-500",
   },
 };
+
+type FilterStatus = TaskStatus | "ALL";
+
+function getDueStatus(dueDate: Date | string | null, status: string) {
+  if (!dueDate || status === "COMPLETED") return null;
+  const now = new Date();
+  const due = new Date(dueDate);
+  const days = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  if (days < 0) return "overdue";
+  if (days <= 3) return "almost-due";
+  if (days <= 7) return "one-week";
+  return null;
+}
 
 function StatusBadge({ status }: { status: TaskStatus }) {
   const cfg = STATUS_CONFIG[status];
@@ -148,23 +169,33 @@ function StatusSelector({
   );
 }
 
-function EmptyState({ tab }: { tab: "inbox" | "sent" }) {
+function EmptyState({ tab, filtered }: { tab: "inbox" | "sent"; filtered: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-4">
       <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
         <ClipboardList className="w-6 h-6 text-muted-foreground" />
       </div>
       <p className="font-medium text-sm">
-        {tab === "inbox" ? "Your inbox is clear" : "No tasks sent yet"}
+        {filtered ? "No tasks match this filter" : tab === "inbox" ? "Your inbox is clear" : "No tasks sent yet"}
       </p>
       <p className="text-xs text-muted-foreground mt-1 max-w-xs">
-        {tab === "inbox"
+        {filtered
+          ? "Try selecting a different status filter"
+          : tab === "inbox"
           ? "Tasks assigned to you will appear here"
           : "Use the Create Task button to assign a task to a team member"}
       </p>
     </div>
   );
 }
+
+const FILTER_OPTIONS: { label: string; value: FilterStatus }[] = [
+  { label: "All", value: "ALL" },
+  { label: "Pending", value: "PENDING" },
+  { label: "Ongoing", value: "ONGOING" },
+  { label: "Completed", value: "COMPLETED" },
+  { label: "Postponed", value: "POSTPONED" },
+];
 
 export function TasksContent({
   inbox,
@@ -176,8 +207,11 @@ export function TasksContent({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"inbox" | "sent">("inbox");
   const [updating, setUpdating] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
 
   const currentTasks = activeTab === "inbox" ? inbox : sent;
+  const filteredTasks =
+    statusFilter === "ALL" ? currentTasks : currentTasks.filter((t) => t.status === statusFilter);
   const pendingCount = inbox.filter((t) => t.status === "PENDING").length;
 
   async function updateStatus(taskId: string, status: string) {
@@ -215,6 +249,7 @@ export function TasksContent({
 
   return (
     <div className="space-y-6">
+      {/* Page header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
@@ -223,11 +258,15 @@ export function TasksContent({
         <CreateTaskDialog users={users} onSuccess={() => router.refresh()} />
       </div>
 
+      {/* Tabs */}
       <div className="flex gap-1 bg-muted/40 p-1 rounded-lg w-fit border">
         {(["inbox", "sent"] as const).map((tab) => (
           <button
             key={tab}
-            onClick={() => setActiveTab(tab)}
+            onClick={() => {
+              setActiveTab(tab);
+              setStatusFilter("ALL");
+            }}
             className={cn(
               "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
               activeTab === tab
@@ -248,9 +287,42 @@ export function TasksContent({
         ))}
       </div>
 
-      {currentTasks.length === 0 ? (
+      {/* Status filters */}
+      <div className="flex flex-wrap gap-2">
+        {FILTER_OPTIONS.map(({ label, value }) => {
+          const count =
+            value === "ALL"
+              ? currentTasks.length
+              : currentTasks.filter((t) => t.status === value).length;
+          return (
+            <button
+              key={value}
+              onClick={() => setStatusFilter(value)}
+              className={cn(
+                "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all",
+                statusFilter === value
+                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
+                  : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/30"
+              )}
+            >
+              {label}
+              <span
+                className={cn(
+                  "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
+                  statusFilter === value ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted"
+                )}
+              >
+                {count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Task table */}
+      {filteredTasks.length === 0 ? (
         <div className="bg-card border rounded-xl">
-          <EmptyState tab={activeTab} />
+          <EmptyState tab={activeTab} filtered={statusFilter !== "ALL"} />
         </div>
       ) : (
         <div className="bg-card border rounded-xl overflow-hidden">
@@ -271,17 +343,15 @@ export function TasksContent({
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {currentTasks.map((task) => {
-                  const isOverdue =
-                    task.dueDate &&
-                    new Date(task.dueDate) < new Date() &&
-                    task.status !== "COMPLETED";
+                {filteredTasks.map((task) => {
+                  const dueStatus = getDueStatus(task.dueDate, task.status);
                   const canDelete =
                     task.senderId === currentUserId || currentUserRole === "ADMIN";
                   const person = activeTab === "inbox" ? task.sender : task.assignee;
 
                   return (
                     <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
+                      {/* Title + truncated description */}
                       <td className="px-4 py-3 max-w-[240px]">
                         <p className="font-medium truncate">{task.title}</p>
                         {task.description && (
@@ -291,6 +361,7 @@ export function TasksContent({
                         )}
                       </td>
 
+                      {/* Person */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{person.name}</span>
@@ -298,26 +369,49 @@ export function TasksContent({
                         </div>
                       </td>
 
+                      {/* Priority */}
                       <td className="px-4 py-3">
                         <PriorityBadge priority={task.priority as TaskPriority} />
                       </td>
 
+                      {/* Due date + urgency indicators */}
                       <td className="px-4 py-3 whitespace-nowrap">
                         {task.dueDate ? (
-                          <span
-                            className={cn(
-                              "flex items-center gap-1 text-sm",
-                              isOverdue ? "text-red-500 font-medium" : "text-muted-foreground"
+                          <div className="flex flex-col gap-0.5">
+                            <span
+                              className={cn(
+                                "flex items-center gap-1 text-sm",
+                                dueStatus === "overdue"
+                                  ? "text-red-500 font-medium"
+                                  : dueStatus === "almost-due"
+                                  ? "text-orange-500 font-medium"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {dueStatus === "overdue" && (
+                                <AlertTriangle className="w-3 h-3 shrink-0" />
+                              )}
+                              {formatDate(task.dueDate)}
+                            </span>
+                            {dueStatus === "almost-due" && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-orange-500">
+                                <AlertTriangle className="w-2.5 h-2.5" />
+                                Almost Due
+                              </span>
                             )}
-                          >
-                            {isOverdue && <AlertTriangle className="w-3 h-3 shrink-0" />}
-                            {formatDate(task.dueDate)}
-                          </span>
+                            {dueStatus === "one-week" && (
+                              <span className="inline-flex items-center gap-0.5 text-[10px] font-semibold text-yellow-600 dark:text-yellow-400">
+                                <Clock className="w-2.5 h-2.5" />
+                                Due This Week
+                              </span>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
                       </td>
 
+                      {/* Status */}
                       <td className="px-4 py-3">
                         {activeTab === "inbox" ? (
                           <StatusSelector
@@ -331,16 +425,28 @@ export function TasksContent({
                         )}
                       </td>
 
-                      <td className="px-4 py-3 text-right">
-                        {canDelete && (
-                          <button
-                            onClick={() => deleteTask(task.id)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1 rounded hover:bg-destructive/10"
-                            aria-label="Delete task"
+                      {/* Actions */}
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-1">
+                          {/* View */}
+                          <Link
+                            href={`/tasks/${task.id}`}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1 rounded hover:bg-muted"
+                            aria-label="View task"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
+                            <Eye className="w-3.5 h-3.5" />
+                          </Link>
+                          {/* Delete */}
+                          {canDelete && (
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1 rounded hover:bg-destructive/10"
+                              aria-label="Delete task"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
