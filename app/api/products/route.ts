@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { syncProducts, syncOrders } from "@/lib/shopify";
+import { syncProducts } from "@/lib/shopify";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
@@ -20,38 +20,44 @@ export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const store = await prisma.store.findFirst({ where: { platform: "SHOPIFY" } });
-  if (!store) {
-    return NextResponse.json({ error: "No Shopify store connected" }, { status: 400 });
+  const stores = await prisma.store.findMany({ where: { platform: "SHOPIFY" } });
+  if (stores.length === 0) {
+    return NextResponse.json({ error: "No Shopify stores connected" }, { status: 400 });
   }
 
-  try {
-    const [productResult, orderResult] = await Promise.all([
-      syncProducts(store.id),
-      syncOrders(store.id),
-    ]);
+  // Sync all stores concurrently; allSettled so one failing store doesn't abort the others.
+  const settled = await Promise.allSettled(
+    stores.map((store) => syncProducts(store.id).then((r) => ({ ...r, storeName: store.name })))
+  );
 
-    await prisma.automationLog.create({
-      data: {
-        type: "SHOPIFY_SYNC",
-        status: "SUCCESS",
-        message: `Synced ${productResult.synced} products and ${orderResult.synced} orders`,
-        payload: { productResult, orderResult },
-      },
-    });
+  let totalSynced = 0;
+  let totalFetched = 0;
+  const errors: string[] = [];
 
-    return NextResponse.json({ success: true, ...productResult });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    await prisma.automationLog.create({
-      data: {
-        type: "SHOPIFY_SYNC",
-        status: "FAILED",
-        message,
-      },
-    });
-    return NextResponse.json({ error: message }, { status: 500 });
+  settled.forEach((item, i) => {
+    if (item.status === "fulfilled") {
+      totalSynced += item.value.synced;
+      totalFetched += item.value.fetched;
+    } else {
+      errors.push(`${stores[i].name}: ${item.reason instanceof Error ? item.reason.message : "Sync failed"}`);
+    }
+  });
+
+  await prisma.automationLog.create({
+    data: {
+      type: "SHOPIFY_SYNC",
+      status: errors.length > 0 && totalFetched === 0 ? "FAILED" : "SUCCESS",
+      message: errors.length > 0
+        ? `Partial sync — errors: ${errors.join("; ")}`
+        : `Fetched ${totalFetched} products, synced ${totalSynced} variants across ${stores.length} store(s)`,
+    },
+  });
+
+  if (errors.length > 0 && totalFetched === 0) {
+    return NextResponse.json({ error: errors.join("; ") }, { status: 500 });
   }
+
+  return NextResponse.json({ success: true, synced: totalSynced, fetched: totalFetched, errors });
 }
 
 export async function PATCH(req: Request) {
