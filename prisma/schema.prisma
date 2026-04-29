@@ -161,6 +161,7 @@ model Task {
   id          String       @id @default(cuid())
   title       String
   description String?
+  images      String[]
   status      TaskStatus   @default(PENDING)
   priority    TaskPriority @default(MEDIUM)
   dueDate     DateTime?

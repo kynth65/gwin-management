@@ -32,7 +32,7 @@ export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { title, description, assigneeId, priority, dueDate } = await req.json();
+  const { title, description, assigneeId, priority, dueDate, imageUrls } = await req.json();
 
   if (!title?.trim()) return NextResponse.json({ error: "Title is required" }, { status: 400 });
   if (!assigneeId) return NextResponse.json({ error: "Assignee is required" }, { status: 400 });
@@ -45,10 +45,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Staff members cannot assign tasks to admins" }, { status: 403 });
   }
 
-  const task = await prisma.task.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const task = await (prisma.task.create as any)({
     data: {
       title: title.trim(),
       description: description?.trim() || null,
+      images: Array.isArray(imageUrls) ? imageUrls : [],
       assigneeId,
       senderId: session.user.id,
       priority: priority ?? "MEDIUM",

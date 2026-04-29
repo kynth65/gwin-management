@@ -7,6 +7,26 @@ type Params = { params: { id: string } };
 
 const userSelect = { id: true, name: true, role: true } as const;
 
+export async function GET(_req: Request, { params }: Params) {
+  const session = await getServerSession(authOptions);
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+  const task = await prisma.task.findUnique({
+    where: { id: params.id },
+    include: { sender: { select: userSelect }, assignee: { select: userSelect } },
+  });
+  if (!task) return NextResponse.json({ error: "Task not found" }, { status: 404 });
+
+  const canView =
+    task.senderId === session.user.id ||
+    task.assigneeId === session.user.id ||
+    session.user.isAdmin;
+
+  if (!canView) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  return NextResponse.json(task);
+}
+
 export async function PATCH(req: Request, { params }: Params) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
