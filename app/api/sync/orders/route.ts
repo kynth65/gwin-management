@@ -8,30 +8,49 @@ export async function POST() {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const storeUrl = process.env.SHOPIFY_STORE_URL;
-  const accessToken = process.env.SHOPIFY_ACCESS_TOKEN;
+  const stores = await prisma.store.findMany({ where: { platform: "SHOPIFY" } });
 
-  if (!storeUrl || !accessToken) {
+  if (stores.length === 0) {
     return NextResponse.json(
-      { error: "SHOPIFY_STORE_URL and SHOPIFY_ACCESS_TOKEN must be set in environment" },
+      { error: "No Shopify stores configured. Add a store in Settings first." },
       { status: 400 }
     );
   }
 
-  let store = await prisma.store.findFirst({ where: { platform: "SHOPIFY" } });
+  // Run all stores concurrently; allSettled so one failing store doesn't abort the others.
+  const settled = await Promise.allSettled(
+    stores.map(async (store) => {
+      const result = await syncOrders(store.id);
+      await prisma.store.update({
+        where: { id: store.id },
+        data: { lastSyncAt: new Date() },
+      });
+      return { storeId: store.id, storeName: store.name, synced: result.synced };
+    })
+  );
 
-  if (!store) {
-    store = await prisma.store.create({
-      data: { name: storeUrl, platform: "SHOPIFY", storeUrl, accessToken },
-    });
-  }
+  let totalSynced = 0;
+  const results: { storeId: string; storeName: string; synced: number }[] = [];
+  const errors: { storeName: string; error: string }[] = [];
 
-  const result = await syncOrders(store.id);
-
-  await prisma.store.update({
-    where: { id: store.id },
-    data: { lastSyncAt: new Date() },
+  settled.forEach((item, i) => {
+    if (item.status === "fulfilled") {
+      totalSynced += item.value.synced;
+      results.push(item.value);
+    } else {
+      errors.push({
+        storeName: stores[i].name,
+        error: item.reason instanceof Error ? item.reason.message : "Sync failed",
+      });
+    }
   });
 
-  return NextResponse.json({ synced: result.synced, storeId: store.id });
+  if (errors.length > 0 && results.length === 0) {
+    return NextResponse.json(
+      { error: errors.map((e) => `${e.storeName}: ${e.error}`).join("; ") },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({ synced: totalSynced, stores: results, errors });
 }

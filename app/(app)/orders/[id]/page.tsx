@@ -106,7 +106,7 @@ export default async function OrderDetailPage({ params }: { params: { id: string
 
   let shopify: ShopifyOrderDetail | null = null;
   try {
-    shopify = await fetchOrderById(dbOrder.externalId);
+    shopify = await fetchOrderById(dbOrder.externalId, dbOrder.storeId);
   } catch {
     // Shopify unavailable — render with DB data only
   }

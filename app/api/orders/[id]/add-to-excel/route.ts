@@ -40,7 +40,7 @@ export async function POST(
   // Attempt to fetch full Shopify order for address/phone — fall back to DB if unavailable
   let shopifyOrder = null;
   try {
-    shopifyOrder = await fetchOrderById(dbOrder.externalId);
+    shopifyOrder = await fetchOrderById(dbOrder.externalId, dbOrder.storeId);
   } catch {
     // proceed with DB data only
   }
