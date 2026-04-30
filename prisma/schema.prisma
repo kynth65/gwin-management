@@ -40,8 +40,9 @@ enum AutomationStatus {
 }
 
 enum TaskStatus {
-  PENDING
-  ONGOING
+  ASSIGNED
+  SEEN
+  STARTED
   COMPLETED
   POSTPONED
 }
@@ -52,17 +53,38 @@ enum TaskPriority {
   HIGH
 }
 
+enum PostponeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum NotificationType {
+  TASK_ASSIGNED
+  TASK_SEEN
+  TASK_STARTED
+  TASK_COMPLETED
+  POSTPONE_REQUESTED
+  POSTPONE_APPROVED
+  POSTPONE_REJECTED
+}
+
 model User {
-  id            String        @id @default(cuid())
-  email         String        @unique
-  password      String
-  name          String
-  roleId        String
-  role          UserRole      @relation(fields: [roleId], references: [id])
-  createdAt     DateTime      @default(now())
-  exports       ExcelExport[]
-  tasksSent     Task[]        @relation("TasksSent")
-  tasksReceived Task[]        @relation("TasksReceived")
+  id                 String            @id @default(cuid())
+  email              String            @unique
+  password           String
+  name               String
+  roleId             String
+  emailNotifications Boolean           @default(false)
+  role               UserRole          @relation(fields: [roleId], references: [id])
+  createdAt          DateTime          @default(now())
+  exports            ExcelExport[]
+  tasksSent          Task[]            @relation("TasksSent")
+  tasksReceived      Task[]            @relation("TasksReceived")
+  notifications      Notification[]
+  postponeRequests   PostponeRequest[] @relation("PostponeRequester")
+  postponeReviews    PostponeRequest[] @relation("PostponeReviewer")
+  announcements      Announcement[]    @relation("AnnouncementAuthor")
 
   @@index([email])
   @@index([roleId])
@@ -158,22 +180,75 @@ model BusinessConfig {
 }
 
 model Task {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  images      String[]
-  status      TaskStatus   @default(PENDING)
-  priority    TaskPriority @default(MEDIUM)
-  dueDate     DateTime?
-  senderId    String
-  assigneeId  String
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  sender      User         @relation("TasksSent", fields: [senderId], references: [id], onDelete: Cascade)
-  assignee    User         @relation("TasksReceived", fields: [assigneeId], references: [id], onDelete: Cascade)
+  id               String            @id @default(cuid())
+  title            String
+  description      String?
+  images           String[]
+  status           TaskStatus        @default(ASSIGNED)
+  priority         TaskPriority      @default(MEDIUM)
+  dueDate          DateTime?
+  senderId         String
+  assigneeId       String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  sender           User              @relation("TasksSent", fields: [senderId], references: [id], onDelete: Cascade)
+  assignee         User              @relation("TasksReceived", fields: [assigneeId], references: [id], onDelete: Cascade)
+  postponeRequests PostponeRequest[]
 
   @@index([senderId])
   @@index([assigneeId])
   @@index([status])
+  @@index([createdAt])
+}
+
+model PostponeRequest {
+  id            String         @id @default(cuid())
+  taskId        String
+  task          Task           @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  requesterId   String
+  requester     User           @relation("PostponeRequester", fields: [requesterId], references: [id])
+  description   String
+  images        String[]
+  extensionDays Int
+  status        PostponeStatus @default(PENDING)
+  assignerNote  String?
+  reviewerId    String?
+  reviewer      User?          @relation("PostponeReviewer", fields: [reviewerId], references: [id])
+  reviewedAt    DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([taskId])
+  @@index([requesterId])
+  @@index([status])
+}
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  message   String
+  taskId    String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId])
+  @@index([read])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id        String   @id @default(cuid())
+  authorId  String
+  title     String
+  content   String
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  author    User     @relation("AnnouncementAuthor", fields: [authorId], references: [id])
+
+  @@index([authorId])
   @@index([createdAt])
 }
