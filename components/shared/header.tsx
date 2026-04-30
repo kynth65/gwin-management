@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Moon, Sun, User, Menu } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -40,6 +41,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
+        <NotificationBell />
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
           className="p-2 rounded-md hover:bg-accent transition-colors text-muted-foreground hover:text-foreground"
