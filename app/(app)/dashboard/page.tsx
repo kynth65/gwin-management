@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { DashboardCards } from "@/components/dashboard/dashboard-cards";
 import { RecentOrdersTable } from "@/components/dashboard/recent-orders-table";
 import { QuickActions } from "@/components/dashboard/quick-actions";
+import { WhatsNewFeed } from "@/components/dashboard/whats-new-feed";
 import { CardSkeleton, TableSkeleton } from "@/components/shared/skeletons";
 import { formatDateTime } from "@/lib/utils";
 
@@ -49,9 +50,14 @@ async function DashboardContent() {
         </h2>
         <QuickActions />
       </div>
-      <div>
-        <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
-        <RecentOrdersTable orders={data.recentOrders} />
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+        <div className="xl:col-span-2">
+          <h2 className="text-lg font-semibold mb-4">Recent Orders</h2>
+          <RecentOrdersTable orders={data.recentOrders} />
+        </div>
+        <div>
+          <WhatsNewFeed />
+        </div>
       </div>
     </>
   );
