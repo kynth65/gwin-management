@@ -24,7 +24,14 @@ async function getTasksData(userId: string, isAdmin: boolean) {
     prisma.task.findMany({
       where: { senderId: userId },
       orderBy: { createdAt: "desc" },
-      include: taskUserInclude,
+      include: {
+        ...taskUserInclude,
+        // Include only pending postpone requests so the list can show "Approval Needed"
+        postponeRequests: {
+          where: { status: "PENDING" },
+          select: { id: true, extensionDays: true, status: true },
+        },
+      },
     }),
     prisma.user.findMany({
       where: isAdmin ? {} : { role: { name: "Staff" } },
@@ -36,7 +43,13 @@ async function getTasksData(userId: string, isAdmin: boolean) {
   return { inbox, sent, users };
 }
 
-async function TasksLoader({ userId, isAdmin, userRole }: { userId: string; isAdmin: boolean; userRole: string }) {
+async function TasksLoader({
+  userId,
+  isAdmin,
+}: {
+  userId: string;
+  isAdmin: boolean;
+}) {
   const { inbox, sent, users } = await getTasksData(userId, isAdmin);
 
   return (
@@ -45,7 +58,7 @@ async function TasksLoader({ userId, isAdmin, userRole }: { userId: string; isAd
       sent={sent as unknown as TaskWithUsers[]}
       users={users as unknown as AssignableUser[]}
       currentUserId={userId}
-      currentUserRole={userRole}
+      isAdmin={isAdmin}
     />
   );
 }
@@ -57,7 +70,7 @@ export default async function TasksPage() {
   return (
     <div className="flex-1 p-4 sm:p-6 overflow-auto">
       <Suspense fallback={<TableSkeleton rows={6} />}>
-        <TasksLoader userId={session.user.id} isAdmin={session.user.isAdmin} userRole={session.user.role} />
+        <TasksLoader userId={session.user.id} isAdmin={session.user.isAdmin} />
       </Suspense>
     </div>
   );

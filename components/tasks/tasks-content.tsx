@@ -5,14 +5,13 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn, formatDate } from "@/lib/utils";
 import { CreateTaskDialog } from "./create-task-dialog";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import {
-  ChevronDown,
   Trash2,
   ClipboardList,
   AlertTriangle,
   Clock,
   Eye,
+  CalendarClock,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { AssignableUser, TaskWithUsers, TaskStatus, TaskPriority } from "@/types";
@@ -22,17 +21,21 @@ interface TasksContentProps {
   sent: TaskWithUsers[];
   users: AssignableUser[];
   currentUserId: string;
-  currentUserRole: string;
+  isAdmin: boolean;
 }
 
 const STATUS_CONFIG: Record<TaskStatus, { label: string; className: string }> = {
-  PENDING: {
-    label: "Pending",
-    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  },
-  ONGOING: {
-    label: "Ongoing",
+  ASSIGNED: {
+    label: "Assigned",
     className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+  },
+  SEEN: {
+    label: "Seen",
+    className: "bg-slate-100 text-slate-700 dark:bg-slate-800/50 dark:text-slate-300",
+  },
+  STARTED: {
+    label: "Started",
+    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
   },
   COMPLETED: {
     label: "Completed",
@@ -40,7 +43,7 @@ const STATUS_CONFIG: Record<TaskStatus, { label: string; className: string }> = 
   },
   POSTPONED: {
     label: "Postponed",
-    className: "bg-gray-100 text-gray-600 dark:bg-gray-800/50 dark:text-gray-400",
+    className: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
   },
 };
 
@@ -111,64 +114,6 @@ function RoleBadge({ role }: { role: { name: string; isAdmin: boolean } }) {
   );
 }
 
-function StatusSelector({
-  taskId,
-  status,
-  updating,
-  onUpdate,
-}: {
-  taskId: string;
-  status: TaskStatus;
-  updating: string | null;
-  onUpdate: (id: string, status: string) => void;
-}) {
-  const cfg = STATUS_CONFIG[status];
-  const isUpdating = updating === taskId;
-
-  return (
-    <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        <button
-          disabled={isUpdating}
-          className={cn(
-            "inline-flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full transition-opacity cursor-pointer",
-            cfg.className,
-            isUpdating && "opacity-50 cursor-wait"
-          )}
-        >
-          {isUpdating ? "Saving..." : cfg.label}
-          {!isUpdating && <ChevronDown className="w-3 h-3 opacity-70" />}
-        </button>
-      </DropdownMenu.Trigger>
-
-      <DropdownMenu.Portal>
-        <DropdownMenu.Content
-          className="bg-card border border-border rounded-lg shadow-xl p-1 z-50 min-w-[150px] animate-in fade-in-0 zoom-in-95"
-          align="start"
-          sideOffset={5}
-        >
-          {(Object.entries(STATUS_CONFIG) as [TaskStatus, (typeof STATUS_CONFIG)[TaskStatus]][]).map(
-            ([val, { label, className }]) => (
-              <DropdownMenu.Item
-                key={val}
-                onSelect={() => val !== status && onUpdate(taskId, val)}
-                className="flex items-center justify-between gap-3 px-2 py-1.5 rounded-md cursor-pointer hover:bg-muted outline-none"
-              >
-                <span className={cn("text-xs font-medium px-2 py-0.5 rounded-full", className)}>
-                  {label}
-                </span>
-                {val === status && (
-                  <span className="text-xs text-muted-foreground">current</span>
-                )}
-              </DropdownMenu.Item>
-            )
-          )}
-        </DropdownMenu.Content>
-      </DropdownMenu.Portal>
-    </DropdownMenu.Root>
-  );
-}
-
 function EmptyState({ tab, filtered }: { tab: "inbox" | "sent"; filtered: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-4">
@@ -191,8 +136,9 @@ function EmptyState({ tab, filtered }: { tab: "inbox" | "sent"; filtered: boolea
 
 const FILTER_OPTIONS: { label: string; value: FilterStatus }[] = [
   { label: "All", value: "ALL" },
-  { label: "Pending", value: "PENDING" },
-  { label: "Ongoing", value: "ONGOING" },
+  { label: "Assigned", value: "ASSIGNED" },
+  { label: "Seen", value: "SEEN" },
+  { label: "Started", value: "STARTED" },
   { label: "Completed", value: "COMPLETED" },
   { label: "Postponed", value: "POSTPONED" },
 ];
@@ -202,38 +148,20 @@ export function TasksContent({
   sent,
   users,
   currentUserId,
-  currentUserRole,
+  isAdmin,
 }: TasksContentProps) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"inbox" | "sent">("inbox");
-  const [updating, setUpdating] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
 
   const currentTasks = activeTab === "inbox" ? inbox : sent;
   const filteredTasks =
     statusFilter === "ALL" ? currentTasks : currentTasks.filter((t) => t.status === statusFilter);
-  const pendingCount = inbox.filter((t) => t.status === "PENDING").length;
 
-  async function updateStatus(taskId: string, status: string) {
-    setUpdating(taskId);
-    try {
-      const res = await fetch(`/api/tasks/${taskId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to update");
-      }
-      toast.success("Status updated");
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Failed to update status");
-    } finally {
-      setUpdating(null);
-    }
-  }
+  const assignedCount = inbox.filter((t) => t.status === "ASSIGNED").length;
+  const pendingApprovalCount = sent.filter(
+    (t) => t.postponeRequests && t.postponeRequests.length > 0
+  ).length;
 
   async function deleteTask(taskId: string) {
     if (!confirm("Delete this task? This action cannot be undone.")) return;
@@ -275,12 +203,17 @@ export function TasksContent({
             )}
           >
             {tab === "inbox" ? "Inbox" : "Sent"}
-            {tab === "inbox" && pendingCount > 0 && (
+            {tab === "inbox" && assignedCount > 0 && (
               <span className="ml-2 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none">
-                {pendingCount}
+                {assignedCount}
               </span>
             )}
-            {tab === "sent" && (
+            {tab === "sent" && pendingApprovalCount > 0 && (
+              <span className="ml-2 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none">
+                {pendingApprovalCount}
+              </span>
+            )}
+            {tab === "sent" && pendingApprovalCount === 0 && (
               <span className="ml-1.5 text-muted-foreground text-xs">({sent.length})</span>
             )}
           </button>
@@ -345,9 +278,12 @@ export function TasksContent({
               <tbody className="divide-y divide-border">
                 {filteredTasks.map((task) => {
                   const dueStatus = getDueStatus(task.dueDate, task.status);
-                  const canDelete =
-                    task.senderId === currentUserId || currentUserRole === "ADMIN";
+                  const canDelete = task.senderId === currentUserId || isAdmin;
                   const person = activeTab === "inbox" ? task.sender : task.assignee;
+                  const hasPendingPostpone =
+                    activeTab === "sent" &&
+                    task.postponeRequests &&
+                    task.postponeRequests.length > 0;
 
                   return (
                     <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
@@ -413,22 +349,20 @@ export function TasksContent({
 
                       {/* Status */}
                       <td className="px-4 py-3">
-                        {activeTab === "inbox" ? (
-                          <StatusSelector
-                            taskId={task.id}
-                            status={task.status as TaskStatus}
-                            updating={updating}
-                            onUpdate={updateStatus}
-                          />
-                        ) : (
+                        <div className="flex flex-col gap-1">
                           <StatusBadge status={task.status as TaskStatus} />
-                        )}
+                          {hasPendingPostpone && (
+                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                              <CalendarClock className="w-2.5 h-2.5" />
+                              Approval Needed
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Actions */}
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-1">
-                          {/* View */}
                           <Link
                             href={`/tasks/${task.id}`}
                             className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1 rounded hover:bg-muted"
@@ -436,7 +370,6 @@ export function TasksContent({
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </Link>
-                          {/* Delete */}
                           {canDelete && (
                             <button
                               onClick={() => deleteTask(task.id)}
