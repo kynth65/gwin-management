@@ -9,9 +9,8 @@ import { CardSkeleton, TableSkeleton } from "@/components/shared/skeletons";
 import { formatDateTime } from "@/lib/utils";
 
 async function getDashboardData() {
-  const [totalProducts, totalOrders, pendingExports, recentOrders, lastSync] =
+  const [totalOrders, pendingExports, recentOrders, lastSync] =
     await Promise.all([
-      prisma.product.count(),
       prisma.order.count(),
       prisma.excelExport.count({ where: { status: "PENDING" } }),
       prisma.order.findMany({
@@ -26,7 +25,6 @@ async function getDashboardData() {
     ]);
 
   return {
-    totalProducts,
     totalOrders,
     pendingExports,
     recentOrders,
@@ -39,7 +37,6 @@ async function DashboardContent() {
   return (
     <>
       <DashboardCards
-        totalProducts={data.totalProducts}
         totalOrders={data.totalOrders}
         pendingExports={data.pendingExports}
         lastSyncAt={data.lastSyncAt}

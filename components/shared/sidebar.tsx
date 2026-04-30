@@ -8,7 +8,6 @@ import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
-  Package,
   ShoppingCart,
   Zap,
   Settings,
@@ -22,7 +21,6 @@ import { useCustomization } from "@/components/customization/customization-conte
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
-  { href: "/products", label: "Products", icon: Package, adminOnly: false },
   { href: "/orders", label: "Orders", icon: ShoppingCart, adminOnly: false },
   { href: "/tasks", label: "Tasks", icon: ClipboardList, adminOnly: false },
   { href: "/automations", label: "Automations", icon: Zap, adminOnly: false },

@@ -1,7 +1,6 @@
-import { Package, ShoppingCart, FileSpreadsheet, RefreshCw } from "lucide-react";
+import { ShoppingCart, FileSpreadsheet, RefreshCw } from "lucide-react";
 
 interface DashboardCardsProps {
-  totalProducts: number;
   totalOrders: number;
   pendingExports: number;
   lastSyncAt: string;
@@ -35,14 +34,12 @@ function StatCard({
 }
 
 export function DashboardCards({
-  totalProducts,
   totalOrders,
   pendingExports,
   lastSyncAt,
 }: DashboardCardsProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
-      <StatCard title="Total Products" value={totalProducts} icon={Package} />
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <StatCard title="Total Orders" value={totalOrders} icon={ShoppingCart} />
       <StatCard
         title="Pending Exports"
