@@ -55,8 +55,20 @@ export async function POST(req: Request) {
       senderId: session.user.id,
       priority: priority ?? "MEDIUM",
       dueDate: dueDate ? new Date(dueDate) : null,
+      status: "ASSIGNED",
     },
     include: { sender: { select: userSelect }, assignee: { select: userSelect } },
+  });
+
+  // Notify the assignee
+  await prisma.notification.create({
+    data: {
+      userId: assigneeId,
+      type: "TASK_ASSIGNED",
+      title: "New task assigned to you",
+      message: `${session.user.name} assigned you: "${title.trim()}"`,
+      taskId: task.id,
+    },
   });
 
   return NextResponse.json(task, { status: 201 });
