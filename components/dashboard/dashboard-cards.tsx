@@ -15,16 +15,14 @@ function StatCard({
   title: string;
   value: string | number;
   icon: React.ElementType;
-  description?: string;
+  description: string;
 }) {
   return (
     <div className="bg-card border rounded-xl p-5 flex items-start justify-between hover:shadow-md transition-shadow group">
-      <div className="space-y-1 min-w-0 flex-1">
+      <div className="flex flex-col gap-1 min-w-0 flex-1">
         <p className="text-sm font-medium text-muted-foreground">{title}</p>
         <p className="text-2xl font-bold text-foreground">{value}</p>
-        {description && (
-          <p className="text-xs text-muted-foreground mt-0.5 truncate">{description}</p>
-        )}
+        <p className="text-xs text-muted-foreground truncate">{description}</p>
       </div>
       <div className="p-2.5 bg-primary/10 rounded-xl shrink-0 ml-4 group-hover:bg-primary/15 transition-colors">
         <Icon className="h-5 w-5 text-primary" />
@@ -40,11 +38,17 @@ export function DashboardCards({
 }: DashboardCardsProps) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-      <StatCard title="Total Orders" value={totalOrders} icon={ShoppingCart} />
+      <StatCard
+        title="Total Orders"
+        value={totalOrders}
+        icon={ShoppingCart}
+        description="All synced orders"
+      />
       <StatCard
         title="Pending Exports"
         value={pendingExports}
         icon={FileSpreadsheet}
+        description={pendingExports > 0 ? "Awaiting export to sheet" : "All exports up to date"}
       />
       <StatCard
         title="Last Sync"

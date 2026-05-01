@@ -20,37 +20,41 @@ export function RecentOrdersTable({ orders }: { orders: OrderWithStore[] }) {
   }
 
   return (
-    <div className="bg-card border rounded-xl overflow-hidden">
-      <div className="overflow-x-auto">
+    /* overflow-clip trims border-radius corners without creating a scroll container,
+       keeping position:sticky on thead functional inside the inner overflow-auto div */
+    <div className="bg-card border rounded-xl overflow-clip">
+      <div className="overflow-auto max-h-[440px]">
         <table className="w-full min-w-[560px]">
-          <thead className="border-b bg-muted/40">
-            <tr>
+          <thead className="sticky top-0 z-10">
+            <tr className="border-b bg-muted">
               {["Order #", "Customer", "Store", "Total", "Status", "Date"].map((h) => (
                 <th
                   key={h}
-                  className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                  className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0"
                 >
                   {h}
                 </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y">
+          <tbody className="divide-y divide-border">
             {orders.map((order) => (
               <tr key={order.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-3 text-sm font-medium text-primary">
+                <td className="px-4 py-3 text-sm font-medium text-primary border-r border-border">
                   #{order.orderNumber}
                 </td>
-                <td className="px-4 py-3 text-sm">{order.customerName}</td>
-                <td className="px-4 py-3 text-sm text-muted-foreground">
+                <td className="px-4 py-3 text-sm border-r border-border">
+                  {order.customerName}
+                </td>
+                <td className="px-4 py-3 text-sm text-muted-foreground border-r border-border">
                   {order.store.name}
                 </td>
-                <td className="px-4 py-3 text-sm font-medium">
+                <td className="px-4 py-3 text-sm font-medium border-r border-border">
                   {formatCurrency(Number(order.totalPrice))}
                 </td>
-                <td className="px-4 py-3 text-sm">
+                <td className="px-4 py-3 text-sm border-r border-border">
                   <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
+                    className={`inline-flex items-center justify-center min-w-[78px] px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${
                       statusColors[order.status] ??
                       "bg-gray-100 text-gray-700 dark:bg-gray-900/40 dark:text-gray-300"
                     }`}
