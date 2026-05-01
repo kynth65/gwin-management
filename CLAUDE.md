@@ -30,7 +30,7 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 7. `app/api/` — thin route handlers that call lib functions
 8. `triggers/` — Trigger.dev background jobs (`shopify-sync` every 6h, `excel-export` on demand)
 
-**Key design:** Shopify products are stored as one DB row **per variant** (not per product). `externalId` is the variant ID, not the product ID. The `@@unique([externalId, storeId])` constraint enables idempotent upserts.
+**Key design:** Shopify products are stored as one DB row **per variant** (not per product). `externalId` is the variant ID, not the product ID. The `@@unique([externalId, storeId])` constraint enables idempotent upserts. Note: the products UI page has been removed — the `Product` model remains solely for Shopify sync data storage.
 
 ## Routes
 
@@ -40,6 +40,15 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 | `app/api/roles/` | CRUD for `UserRole`; admin-only create/delete |
 | `app/api/tasks/` | Task inbox/sent list + create (staff cannot assign to admins) |
 | `app/api/tasks/[id]/` | Update task status/priority, delete |
+| `app/api/tasks/[id]/start/` | Assignee marks task as STARTED |
+| `app/api/tasks/[id]/complete/` | Assignee marks task as COMPLETED |
+| `app/api/tasks/[id]/postpone/` | Assignee submits a postpone request |
+| `app/api/tasks/[id]/postpone/[requestId]/` | Sender approves or rejects a postpone request |
+| `app/api/tasks/upload/` | Upload task attachment images |
+| `app/api/notifications/` | List in-app notifications for current user |
+| `app/api/notifications/[id]/` | Mark a notification as read |
+| `app/api/announcements/` | List announcements (all users); create (admin-only) |
+| `app/api/announcements/[id]/` | Update or delete an announcement (admin-only) |
 | `app/api/orders/[id]/add-to-excel/` | Append order rows to Google Sheet (`gwin` or `mrcooldirect`) |
 | `app/api/sync/orders/` | Manual Shopify order sync trigger |
 | `app/api/profile/` | Update current user's name |
@@ -49,7 +58,7 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 
 - `session.user.isAdmin` (from `UserRole.isAdmin`) gates admin-only API actions.
 - Staff members cannot assign tasks to admin users — enforced in `app/api/tasks/route.ts`.
-- Middleware protects: `/dashboard`, `/products`, `/orders`, `/automations`, `/settings`, `/users`, `/tasks`.
+- Middleware protects: `/dashboard`, `/orders`, `/automations`, `/settings`, `/users`, `/tasks`.
 
 ## Pricing Logic
 
@@ -61,7 +70,10 @@ All pricing math is in `lib/excel.ts`:
 ## Database Schema Notes
 
 - `UserRole` — named roles with `isAdmin` flag; every `User` belongs to one role via `roleId`
-- `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `PENDING | ONGOING | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`
+- `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `ASSIGNED | SEEN | STARTED | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`
+- `PostponeRequest` — linked to a `Task`; submitted by the assignee, reviewed by an admin; statuses: `PENDING | APPROVED | REJECTED`; tracks `extensionDays`, optional `assignerNote`, and reviewer metadata
+- `Notification` — per-user in-app notifications; types: `TASK_ASSIGNED | TASK_SEEN | TASK_STARTED | TASK_COMPLETED | POSTPONE_REQUESTED | POSTPONE_APPROVED | POSTPONE_REJECTED`; has `read` flag; linked to a `taskId` for deep-linking
+- `Announcement` — authored by admin users; has a `pinned` flag; displayed in the dashboard what's-new feed
 - `Order.lineItems` is stored as `Json` (raw Shopify line items array)
 - `AutomationLog` is append-only — never updated, only created; `SHEET_EXPORT` type logs Google Sheets writes
 - Multi-store: every `Product` and `Order` belongs to a `Store`; store platform is `SHOPIFY | AMAZON`

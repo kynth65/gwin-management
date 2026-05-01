@@ -81,7 +81,12 @@ function getDueStatus(dueDate: Date | string | null, status: string) {
 function StatusBadge({ status }: { status: TaskStatus }) {
   const cfg = STATUS_CONFIG[status];
   return (
-    <span className={cn("inline-flex text-xs font-medium px-2 py-0.5 rounded-full", cfg.className)}>
+    <span
+      className={cn(
+        "inline-flex text-xs font-medium px-2 py-0.5 rounded-full min-w-[88px] justify-center",
+        cfg.className
+      )}
+    >
       {cfg.label}
     </span>
   );
@@ -91,7 +96,10 @@ function PriorityBadge({ priority }: { priority: TaskPriority }) {
   const cfg = PRIORITY_CONFIG[priority];
   return (
     <span
-      className={cn("inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full", cfg.className)}
+      className={cn(
+        "inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full",
+        cfg.className
+      )}
     >
       <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", cfg.dot)} />
       {cfg.label}
@@ -198,23 +206,46 @@ export function TasksContent({
             className={cn(
               "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
               activeTab === tab
-                ? "bg-background shadow-sm text-foreground"
-                : "text-muted-foreground hover:text-foreground"
+                ? tab === "inbox"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-emerald-600 text-white shadow-sm"
+                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             )}
           >
             {tab === "inbox" ? "Inbox" : "Sent"}
             {tab === "inbox" && assignedCount > 0 && (
-              <span className="ml-2 bg-primary text-primary-foreground text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none">
+              <span
+                className={cn(
+                  "ml-2 text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none",
+                  activeTab === "inbox"
+                    ? "bg-white/25 text-white"
+                    : "bg-primary text-primary-foreground"
+                )}
+              >
                 {assignedCount}
               </span>
             )}
             {tab === "sent" && pendingApprovalCount > 0 && (
-              <span className="ml-2 bg-amber-500 text-white text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none">
+              <span
+                className={cn(
+                  "ml-2 text-xs rounded-full px-1.5 py-0.5 font-semibold leading-none",
+                  activeTab === "sent"
+                    ? "bg-white/25 text-white"
+                    : "bg-amber-500 text-white"
+                )}
+              >
                 {pendingApprovalCount}
               </span>
             )}
             {tab === "sent" && pendingApprovalCount === 0 && (
-              <span className="ml-1.5 text-muted-foreground text-xs">({sent.length})</span>
+              <span
+                className={cn(
+                  "ml-1.5 text-xs",
+                  activeTab === "sent" ? "text-white/70" : "text-muted-foreground"
+                )}
+              >
+                ({sent.length})
+              </span>
             )}
           </button>
         ))}
@@ -258,16 +289,18 @@ export function TasksContent({
           <EmptyState tab={activeTab} filtered={statusFilter !== "ALL"} />
         </div>
       ) : (
-        <div className="bg-card border rounded-xl overflow-hidden">
-          <div className="overflow-x-auto">
+        /* overflow-clip trims border-radius corners without creating a scroll container,
+           so position:sticky on thead works correctly inside the inner overflow-auto div */
+        <div className="bg-card border rounded-xl overflow-clip">
+          <div className="overflow-auto max-h-[560px]">
             <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b bg-muted/30">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b bg-muted">
                   {["Task", activeTab === "inbox" ? "From" : "To", "Priority", "Due Date", "Status", ""].map(
                     (h) => (
                       <th
                         key={h}
-                        className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider"
+                        className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0"
                       >
                         {h}
                       </th>
@@ -288,7 +321,7 @@ export function TasksContent({
                   return (
                     <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
                       {/* Title + truncated description */}
-                      <td className="px-4 py-3 max-w-[240px]">
+                      <td className="px-4 py-3 max-w-[240px] border-r border-border">
                         <p className="font-medium truncate">{task.title}</p>
                         {task.description && (
                           <p className="text-xs text-muted-foreground truncate mt-0.5">
@@ -298,7 +331,7 @@ export function TasksContent({
                       </td>
 
                       {/* Person */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border">
                         <div className="flex items-center gap-2">
                           <span className="font-medium">{person.name}</span>
                           <RoleBadge role={person.role} />
@@ -306,12 +339,12 @@ export function TasksContent({
                       </td>
 
                       {/* Priority */}
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 border-r border-border">
                         <PriorityBadge priority={task.priority as TaskPriority} />
                       </td>
 
                       {/* Due date + urgency indicators */}
-                      <td className="px-4 py-3 whitespace-nowrap">
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border">
                         {task.dueDate ? (
                           <div className="flex flex-col gap-0.5">
                             <span
@@ -347,14 +380,16 @@ export function TasksContent({
                         )}
                       </td>
 
-                      {/* Status */}
-                      <td className="px-4 py-3">
-                        <div className="flex flex-col gap-1">
+                      {/* Status — fixed-width badge keeps the column symmetric */}
+                      <td className="px-4 py-3 border-r border-border">
+                        <div className="flex items-center gap-1.5">
                           <StatusBadge status={task.status as TaskStatus} />
                           {hasPendingPostpone && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-600 dark:text-amber-400">
-                              <CalendarClock className="w-2.5 h-2.5" />
-                              Approval Needed
+                            <span
+                              title="Postpone approval needed"
+                              className="shrink-0 text-amber-500 dark:text-amber-400"
+                            >
+                              <CalendarClock className="w-3.5 h-3.5" />
                             </span>
                           )}
                         </div>
