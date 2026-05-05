@@ -9,7 +9,7 @@ import { CardSkeleton, TableSkeleton } from "@/components/shared/skeletons";
 import { formatDateTime } from "@/lib/utils";
 
 async function getDashboardData() {
-  const [totalOrders, pendingExports, recentOrders, lastSync] =
+  const [totalOrders, pendingExports, recentOrders, lastSync, overdueTasks] =
     await Promise.all([
       prisma.order.count(),
       prisma.excelExport.count({ where: { status: "PENDING" } }),
@@ -22,6 +22,12 @@ async function getDashboardData() {
         orderBy: { lastSyncAt: "desc" },
         select: { lastSyncAt: true },
       }),
+      prisma.task.count({
+        where: {
+          dueDate: { lt: new Date() },
+          status: { notIn: ["COMPLETED", "POSTPONED"] },
+        },
+      }),
     ]);
 
   return {
@@ -29,6 +35,7 @@ async function getDashboardData() {
     pendingExports,
     recentOrders,
     lastSyncAt: lastSync?.lastSyncAt ? formatDateTime(lastSync.lastSyncAt) : "Never",
+    overdueTasks,
   };
 }
 
@@ -40,6 +47,7 @@ async function DashboardContent() {
         totalOrders={data.totalOrders}
         pendingExports={data.pendingExports}
         lastSyncAt={data.lastSyncAt}
+        overdueTasks={data.overdueTasks}
       />
       <div>
         <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">

@@ -6,6 +6,7 @@ import { Moon, Sun, User, Menu } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 import { NotificationBell } from "@/components/notifications/notification-bell";
+import { TimeTracker } from "@/components/time/time-tracker";
 
 const PAGE_TITLES: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -14,6 +15,7 @@ const PAGE_TITLES: Record<string, string> = {
   "/settings": "Settings",
   "/users": "User Management",
   "/profile": "Profile",
+  "/time": "Time Tracking",
 };
 
 interface HeaderProps {
@@ -40,6 +42,7 @@ export function Header({ onMenuClick }: HeaderProps) {
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
+        <TimeTracker />
         <NotificationBell />
         <button
           onClick={() => setTheme(theme === "dark" ? "light" : "dark")}

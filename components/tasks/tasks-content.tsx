@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { cn, formatDate } from "@/lib/utils";
 import { CreateTaskDialog } from "./create-task-dialog";
+import { EditTaskDialog } from "./edit-task-dialog";
 import {
   Trash2,
   ClipboardList,
@@ -12,6 +13,9 @@ import {
   Clock,
   Eye,
   CalendarClock,
+  Pencil,
+  RotateCcw,
+  ArchiveX,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { AssignableUser, TaskWithUsers, TaskStatus, TaskPriority } from "@/types";
@@ -19,6 +23,7 @@ import type { AssignableUser, TaskWithUsers, TaskStatus, TaskPriority } from "@/
 interface TasksContentProps {
   inbox: TaskWithUsers[];
   sent: TaskWithUsers[];
+  deleted: TaskWithUsers[];
   users: AssignableUser[];
   currentUserId: string;
   isAdmin: boolean;
@@ -65,10 +70,11 @@ const PRIORITY_CONFIG: Record<TaskPriority, { label: string; className: string; 
   },
 };
 
-type FilterStatus = TaskStatus | "ALL";
+type FilterStatus = TaskStatus | "ALL" | "OVERDUE";
+type ActiveTab = "inbox" | "sent" | "deleted";
 
 function getDueStatus(dueDate: Date | string | null, status: string) {
-  if (!dueDate || status === "COMPLETED") return null;
+  if (!dueDate || status === "COMPLETED" || status === "POSTPONED") return null;
   const now = new Date();
   const due = new Date(dueDate);
   const days = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
@@ -122,7 +128,20 @@ function RoleBadge({ role }: { role: { name: string; isAdmin: boolean } }) {
   );
 }
 
-function EmptyState({ tab, filtered }: { tab: "inbox" | "sent"; filtered: boolean }) {
+function EmptyState({ tab, filtered }: { tab: ActiveTab; filtered?: boolean }) {
+  if (tab === "deleted") {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center px-4">
+        <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+          <ArchiveX className="w-6 h-6 text-muted-foreground" />
+        </div>
+        <p className="font-medium text-sm">No deleted tasks</p>
+        <p className="text-xs text-muted-foreground mt-1 max-w-xs">
+          Deleted tasks are kept here so you can restore or permanently remove them
+        </p>
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center px-4">
       <div className="w-12 h-12 rounded-full bg-muted/50 flex items-center justify-center mb-4">
@@ -144,6 +163,7 @@ function EmptyState({ tab, filtered }: { tab: "inbox" | "sent"; filtered: boolea
 
 const FILTER_OPTIONS: { label: string; value: FilterStatus }[] = [
   { label: "All", value: "ALL" },
+  { label: "Overdue", value: "OVERDUE" },
   { label: "Assigned", value: "ASSIGNED" },
   { label: "Seen", value: "SEEN" },
   { label: "Started", value: "STARTED" },
@@ -154,32 +174,62 @@ const FILTER_OPTIONS: { label: string; value: FilterStatus }[] = [
 export function TasksContent({
   inbox,
   sent,
+  deleted,
   users,
   currentUserId,
   isAdmin,
 }: TasksContentProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<"inbox" | "sent">("inbox");
+  const [activeTab, setActiveTab] = useState<ActiveTab>("inbox");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
 
   const currentTasks = activeTab === "inbox" ? inbox : sent;
   const filteredTasks =
-    statusFilter === "ALL" ? currentTasks : currentTasks.filter((t) => t.status === statusFilter);
+    activeTab === "deleted"
+      ? deleted
+      : statusFilter === "ALL"
+      ? currentTasks
+      : statusFilter === "OVERDUE"
+      ? currentTasks.filter((t) => getDueStatus(t.dueDate, t.status) === "overdue")
+      : currentTasks.filter((t) => t.status === statusFilter);
 
   const assignedCount = inbox.filter((t) => t.status === "ASSIGNED").length;
   const pendingApprovalCount = sent.filter(
     (t) => t.postponeRequests && t.postponeRequests.length > 0
   ).length;
 
-  async function deleteTask(taskId: string) {
-    if (!confirm("Delete this task? This action cannot be undone.")) return;
+  async function softDeleteTask(taskId: string) {
+    if (!confirm("Move this task to Deleted? You can restore it later.")) return;
     try {
       const res = await fetch(`/api/tasks/${taskId}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete");
-      toast.success("Task deleted");
+      toast.success("Task moved to Deleted");
       router.refresh();
     } catch {
       toast.error("Failed to delete task");
+    }
+  }
+
+  async function restoreTask(taskId: string) {
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/restore`, { method: "POST" });
+      if (!res.ok) throw new Error("Failed to restore");
+      toast.success("Task restored");
+      router.refresh();
+    } catch {
+      toast.error("Failed to restore task");
+    }
+  }
+
+  async function permanentDeleteTask(taskId: string) {
+    if (!confirm("Permanently delete this task? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`/api/tasks/${taskId}/permanent`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete");
+      toast.success("Task permanently deleted");
+      router.refresh();
+    } catch {
+      toast.error("Failed to permanently delete task");
     }
   }
 
@@ -196,7 +246,7 @@ export function TasksContent({
 
       {/* Tabs */}
       <div className="flex gap-1 bg-muted/40 p-1 rounded-lg w-fit border">
-        {(["inbox", "sent"] as const).map((tab) => (
+        {(["inbox", "sent", "deleted"] as const).map((tab) => (
           <button
             key={tab}
             onClick={() => {
@@ -208,11 +258,13 @@ export function TasksContent({
               activeTab === tab
                 ? tab === "inbox"
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-emerald-600 text-white shadow-sm"
+                  : tab === "sent"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "bg-slate-600 text-white shadow-sm"
                 : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
             )}
           >
-            {tab === "inbox" ? "Inbox" : "Sent"}
+            {tab === "inbox" ? "Inbox" : tab === "sent" ? "Sent" : "Deleted"}
             {tab === "inbox" && assignedCount > 0 && (
               <span
                 className={cn(
@@ -247,48 +299,157 @@ export function TasksContent({
                 ({sent.length})
               </span>
             )}
+            {tab === "deleted" && (
+              <span
+                className={cn(
+                  "ml-1.5 text-xs",
+                  activeTab === "deleted" ? "text-white/70" : "text-muted-foreground"
+                )}
+              >
+                ({deleted.length})
+              </span>
+            )}
           </button>
         ))}
       </div>
 
-      {/* Status filters */}
-      <div className="flex flex-wrap gap-2">
-        {FILTER_OPTIONS.map(({ label, value }) => {
-          const count =
-            value === "ALL"
-              ? currentTasks.length
-              : currentTasks.filter((t) => t.status === value).length;
-          return (
-            <button
-              key={value}
-              onClick={() => setStatusFilter(value)}
-              className={cn(
-                "inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium border transition-all",
-                statusFilter === value
-                  ? "bg-primary text-primary-foreground border-primary shadow-sm"
-                  : "bg-background text-muted-foreground border-border hover:text-foreground hover:border-foreground/30"
-              )}
-            >
-              {label}
-              <span
-                className={cn(
-                  "text-[10px] px-1.5 py-0.5 rounded-full font-semibold",
-                  statusFilter === value ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted"
-                )}
-              >
-                {count}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Status filter dropdown — hidden on Deleted tab */}
+      {activeTab !== "deleted" && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="status-filter" className="text-sm text-muted-foreground shrink-0">
+            Filter:
+          </label>
+          <select
+            id="status-filter"
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+            className="text-sm border border-border rounded-md px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer"
+          >
+            {FILTER_OPTIONS.map(({ label, value }) => {
+              const count =
+                value === "ALL"
+                  ? currentTasks.length
+                  : value === "OVERDUE"
+                  ? currentTasks.filter((t) => getDueStatus(t.dueDate, t.status) === "overdue").length
+                  : currentTasks.filter((t) => t.status === value).length;
+              return (
+                <option key={value} value={value}>
+                  {label} ({count})
+                </option>
+              );
+            })}
+          </select>
+        </div>
+      )}
+
+      {/* Deleted tab info banner */}
+      {activeTab === "deleted" && deleted.length > 0 && (
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
+          <ArchiveX className="w-4 h-4 shrink-0" />
+          <span>
+            Deleted tasks can be restored or permanently removed. Permanent deletion cannot be undone.
+          </span>
+        </div>
+      )}
 
       {/* Task table */}
       {filteredTasks.length === 0 ? (
         <div className="bg-card border rounded-xl">
-          <EmptyState tab={activeTab} filtered={statusFilter !== "ALL"} />
+          <EmptyState tab={activeTab} filtered={activeTab !== "deleted" && statusFilter !== "ALL"} />
+        </div>
+      ) : activeTab === "deleted" ? (
+        /* ── Deleted tasks table ── */
+        <div className="bg-card border rounded-xl overflow-clip">
+          <div className="overflow-auto max-h-[560px]">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 z-10">
+                <tr className="border-b bg-muted">
+                  {["Task", "From", "To", "Priority", "Due Date", "Deleted", "Actions"].map((h) => (
+                    <th
+                      key={h}
+                      className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider border-r border-border last:border-r-0"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {deleted.map((task) => {
+                  const canAct = task.senderId === currentUserId || isAdmin;
+                  return (
+                    <tr key={task.id} className="hover:bg-muted/20 transition-colors group opacity-75 hover:opacity-100">
+                      {/* Title */}
+                      <td className="px-4 py-3 max-w-[220px] border-r border-border">
+                        <p className="font-medium truncate line-through text-muted-foreground">{task.title}</p>
+                        {task.description && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{task.description}</p>
+                        )}
+                      </td>
+
+                      {/* From */}
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{task.sender.name}</span>
+                          <RoleBadge role={task.sender.role} />
+                        </div>
+                      </td>
+
+                      {/* To */}
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border">
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium">{task.assignee.name}</span>
+                          <RoleBadge role={task.assignee.role} />
+                        </div>
+                      </td>
+
+                      {/* Priority */}
+                      <td className="px-4 py-3 border-r border-border">
+                        <PriorityBadge priority={task.priority as TaskPriority} />
+                      </td>
+
+                      {/* Due date */}
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border text-muted-foreground">
+                        {task.dueDate ? formatDate(task.dueDate) : "—"}
+                      </td>
+
+                      {/* Deleted at */}
+                      <td className="px-4 py-3 whitespace-nowrap border-r border-border">
+                        {task.deletedAt ? (
+                          <span className="text-xs text-red-500/80">{formatDate(task.deletedAt)}</span>
+                        ) : null}
+                      </td>
+
+                      {/* Actions */}
+                      <td className="px-4 py-3">
+                        {canAct && (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => restoreTask(task.id)}
+                              title="Restore task"
+                              className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-emerald-600 transition-all p-1 rounded hover:bg-emerald-50 dark:hover:bg-emerald-950/30"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              onClick={() => permanentDeleteTask(task.id)}
+                              title="Delete permanently"
+                              className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1 rounded hover:bg-destructive/10"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       ) : (
+        /* ── Active tasks table (inbox / sent) ── */
         /* overflow-clip trims border-radius corners without creating a scroll container,
            so position:sticky on thead works correctly inside the inner overflow-auto div */
         <div className="bg-card border rounded-xl overflow-clip">
@@ -296,7 +457,7 @@ export function TasksContent({
             <table className="w-full text-sm">
               <thead className="sticky top-0 z-10">
                 <tr className="border-b bg-muted">
-                  {["Task", activeTab === "inbox" ? "From" : "To", "Priority", "Due Date", "Status", ""].map(
+                  {["Task", activeTab === "inbox" ? "From" : "To", "Priority", "Due Date", "Status", "Actions"].map(
                     (h) => (
                       <th
                         key={h}
@@ -311,7 +472,7 @@ export function TasksContent({
               <tbody className="divide-y divide-border">
                 {filteredTasks.map((task) => {
                   const dueStatus = getDueStatus(task.dueDate, task.status);
-                  const canDelete = task.senderId === currentUserId || isAdmin;
+                  const canActAsSender = task.senderId === currentUserId || isAdmin;
                   const person = activeTab === "inbox" ? task.sender : task.assignee;
                   const hasPendingPostpone =
                     activeTab === "sent" &&
@@ -319,7 +480,13 @@ export function TasksContent({
                     task.postponeRequests.length > 0;
 
                   return (
-                    <tr key={task.id} className="hover:bg-muted/20 transition-colors group">
+                    <tr
+                      key={task.id}
+                      className={cn(
+                        "hover:bg-muted/20 transition-colors group",
+                        dueStatus === "overdue" && "bg-red-50/60 dark:bg-red-950/20"
+                      )}
+                    >
                       {/* Title + truncated description */}
                       <td className="px-4 py-3 max-w-[240px] border-r border-border">
                         <p className="font-medium truncate">{task.title}</p>
@@ -400,15 +567,29 @@ export function TasksContent({
                         <div className="flex items-center justify-end gap-1">
                           <Link
                             href={`/tasks/${task.id}`}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1 rounded hover:bg-muted"
+                            className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1 rounded hover:bg-muted"
                             aria-label="View task"
                           >
                             <Eye className="w-3.5 h-3.5" />
                           </Link>
-                          {canDelete && (
+                          {isAdmin && (
+                            <EditTaskDialog
+                              task={task}
+                              onSuccess={() => router.refresh()}
+                              trigger={
+                                <button
+                                  className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-foreground transition-all p-1 rounded hover:bg-muted"
+                                  aria-label="Edit task"
+                                >
+                                  <Pencil className="w-3.5 h-3.5" />
+                                </button>
+                              }
+                            />
+                          )}
+                          {canActAsSender && (
                             <button
-                              onClick={() => deleteTask(task.id)}
-                              className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1 rounded hover:bg-destructive/10"
+                              onClick={() => softDeleteTask(task.id)}
+                              className="opacity-40 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-all p-1 rounded hover:bg-destructive/10"
                               aria-label="Delete task"
                             >
                               <Trash2 className="w-3.5 h-3.5" />

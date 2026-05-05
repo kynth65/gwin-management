@@ -43,6 +43,8 @@ export function OrdersTable({ orders, stores, total, page, pageSize }: Props) {
   const [syncMsg, setSyncMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [searchInput, setSearchInput] = useState(searchParams.get("search") ?? "");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [autoSyncInterval, setAutoSyncInterval] = useState<0 | 30 | 60>(0);
+  const [nextSyncIn, setNextSyncIn] = useState<number | null>(null);
 
   const totalPages = Math.ceil(total / pageSize);
 
@@ -55,6 +57,39 @@ export function OrdersTable({ orders, stores, total, page, pageSize }: Props) {
   useEffect(() => {
     setSearchInput(searchParams.get("search") ?? "");
   }, [searchParams]);
+
+  // Auto-sync timer with per-second countdown
+  useEffect(() => {
+    if (autoSyncInterval === 0) {
+      setNextSyncIn(null);
+      return;
+    }
+
+    let secondsLeft = autoSyncInterval * 60;
+    setNextSyncIn(secondsLeft);
+
+    const countdownId = setInterval(() => {
+      secondsLeft -= 1;
+      setNextSyncIn(secondsLeft);
+      if (secondsLeft <= 0) secondsLeft = autoSyncInterval * 60;
+    }, 1000);
+
+    const syncId = setInterval(() => {
+      secondsLeft = autoSyncInterval * 60;
+      void handleSync();
+    }, autoSyncInterval * 60 * 1000);
+
+    return () => {
+      clearInterval(countdownId);
+      clearInterval(syncId);
+    };
+  }, [autoSyncInterval]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const formatCountdown = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${String(s).padStart(2, "0")}`;
+  };
 
   // Build a new URL by merging current params with overrides; always resets page
   const navigate = (updates: Record<string, string>) => {
@@ -116,13 +151,27 @@ export function OrdersTable({ orders, stores, total, page, pageSize }: Props) {
               {syncMsg.text}
             </span>
           )}
+          {nextSyncIn !== null && (
+            <span className="text-sm text-muted-foreground tabular-nums">
+              Next sync in {formatCountdown(nextSyncIn)}
+            </span>
+          )}
+          <select
+            value={autoSyncInterval}
+            onChange={(e) => setAutoSyncInterval(Number(e.target.value) as 0 | 30 | 60)}
+            className="px-2 py-2 text-sm border rounded-md bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+          >
+            <option value={0}>Manual</option>
+            <option value={30}>Auto 30m</option>
+            <option value={60}>Auto 60m</option>
+          </select>
           <button
             onClick={handleSync}
             disabled={syncing}
             className="flex items-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
-            {syncing ? "Syncing…" : "Sync Orders"}
+            {syncing ? "Syncing…" : "Sync"}
           </button>
         </div>
       </div>

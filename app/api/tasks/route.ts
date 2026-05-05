@@ -11,13 +11,25 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const type = searchParams.get("type") ?? "inbox";
-
   const userId = session.user.id;
+
+  if (type === "deleted") {
+    const where = session.user.isAdmin
+      ? { deletedAt: { not: null as Date | null } }
+      : { senderId: userId, deletedAt: { not: null as Date | null } };
+
+    const tasks = await prisma.task.findMany({
+      where,
+      orderBy: { deletedAt: "desc" },
+      include: { sender: { select: userSelect }, assignee: { select: userSelect } },
+    });
+    return NextResponse.json(tasks);
+  }
 
   const where =
     type === "sent"
-      ? { senderId: userId }
-      : { assigneeId: userId };
+      ? { senderId: userId, deletedAt: null as Date | null }
+      : { assigneeId: userId, deletedAt: null as Date | null };
 
   const tasks = await prisma.task.findMany({
     where,

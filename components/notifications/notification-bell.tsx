@@ -14,6 +14,7 @@ const TYPE_LABELS: Record<string, string> = {
   POSTPONE_REQUESTED: "Postpone requested",
   POSTPONE_APPROVED: "Postpone approved",
   POSTPONE_REJECTED: "Postpone rejected",
+  TASK_OVERDUE: "Task overdue",
 };
 
 const TYPE_COLORS: Record<string, string> = {
@@ -24,6 +25,7 @@ const TYPE_COLORS: Record<string, string> = {
   POSTPONE_REQUESTED: "bg-orange-500",
   POSTPONE_APPROVED: "bg-green-500",
   POSTPONE_REJECTED: "bg-red-500",
+  TASK_OVERDUE: "bg-red-500",
 };
 
 function timeAgo(date: Date | string): string {

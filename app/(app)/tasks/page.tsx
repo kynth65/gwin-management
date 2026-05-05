@@ -15,18 +15,18 @@ const taskUserInclude = {
 } as const;
 
 async function getTasksData(userId: string, isAdmin: boolean) {
-  const [inbox, sent, users] = await Promise.all([
+  const [inbox, sent, users, deleted] = await Promise.all([
     prisma.task.findMany({
-      where: { assigneeId: userId },
+      where: { assigneeId: userId, deletedAt: null },
       orderBy: { createdAt: "desc" },
       include: taskUserInclude,
     }),
     prisma.task.findMany({
-      where: { senderId: userId },
+      where: { senderId: userId, deletedAt: null },
       orderBy: { createdAt: "desc" },
       include: {
         ...taskUserInclude,
-        // Include only pending postpone requests so the list can show "Approval Needed"
+        // Only pending postpone requests so the list can show "Approval Needed"
         postponeRequests: {
           where: { status: "PENDING" },
           select: { id: true, extensionDays: true, status: true },
@@ -38,24 +38,26 @@ async function getTasksData(userId: string, isAdmin: boolean) {
       select: { id: true, name: true, email: true, role: true },
       orderBy: { name: "asc" },
     }),
+    prisma.task.findMany({
+      where: isAdmin
+        ? { deletedAt: { not: null } }
+        : { senderId: userId, deletedAt: { not: null } },
+      orderBy: { deletedAt: "desc" },
+      include: taskUserInclude,
+    }),
   ]);
 
-  return { inbox, sent, users };
+  return { inbox, sent, users, deleted };
 }
 
-async function TasksLoader({
-  userId,
-  isAdmin,
-}: {
-  userId: string;
-  isAdmin: boolean;
-}) {
-  const { inbox, sent, users } = await getTasksData(userId, isAdmin);
+async function TasksLoader({ userId, isAdmin }: { userId: string; isAdmin: boolean }) {
+  const { inbox, sent, users, deleted } = await getTasksData(userId, isAdmin);
 
   return (
     <TasksContent
       inbox={inbox as unknown as TaskWithUsers[]}
       sent={sent as unknown as TaskWithUsers[]}
+      deleted={deleted as unknown as TaskWithUsers[]}
       users={users as unknown as AssignableUser[]}
       currentUserId={userId}
       isAdmin={isAdmin}

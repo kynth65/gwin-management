@@ -16,6 +16,7 @@ import {
   Users,
   X,
   ClipboardList,
+  Clock,
 } from "lucide-react";
 import { useCustomization } from "@/components/customization/customization-context";
 
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, adminOnly: false },
   { href: "/orders", label: "Orders", icon: ShoppingCart, adminOnly: false },
   { href: "/tasks", label: "Tasks", icon: ClipboardList, adminOnly: false },
+  { href: "/time", label: "Time", icon: Clock, adminOnly: false },
   { href: "/automations", label: "Automations", icon: Zap, adminOnly: false },
   { href: "/users", label: "Users", icon: Users, adminOnly: true },
   { href: "/settings", label: "Settings", icon: Settings, adminOnly: false },

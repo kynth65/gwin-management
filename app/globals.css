@@ -26,6 +26,7 @@
     --radius: 0.625rem;
     --sidebar-gradient-from: 294 61% 14%;
     --sidebar-gradient-to: 294 61% 8%;
+    --loader: 294 85% 68%;
   }
 
   .dark {
@@ -48,6 +49,7 @@
     --border: 294 12% 20%;
     --input: 294 12% 20%;
     --ring: 294 55% 62%;
+    --loader: 294 90% 75%;
   }
 }
 
