@@ -1,6 +1,6 @@
-import type { User, Store, Product, Order, ExcelExport, AutomationLog, Task, UserRole, PostponeRequest, Notification, Announcement } from "@prisma/client";
+import type { User, Store, Product, Order, ExcelExport, AutomationLog, Task, UserRole, PostponeRequest, Notification, Announcement, TimeEntry } from "@prisma/client";
 
-export type { User, Store, Product, Order, ExcelExport, AutomationLog, Task, UserRole, PostponeRequest, Notification, Announcement };
+export type { User, Store, Product, Order, ExcelExport, AutomationLog, Task, UserRole, PostponeRequest, Notification, Announcement, TimeEntry };
 
 export type ProductWithStore = Product & { store: { id: string; name: string } };
 export type OrderWithStore = Order & { store: { id: string; name: string } };
@@ -19,7 +19,8 @@ export type NotificationType =
   | "TASK_COMPLETED"
   | "POSTPONE_REQUESTED"
   | "POSTPONE_APPROVED"
-  | "POSTPONE_REJECTED";
+  | "POSTPONE_REJECTED"
+  | "TASK_OVERDUE";
 
 export interface TaskUser {
   id: string;
@@ -47,6 +48,15 @@ export interface TaskWithUsers extends Task {
 
 export interface AnnouncementWithAuthor extends Announcement {
   author: { id: string; name: string };
+}
+
+export interface TimeEntryWithUser extends TimeEntry {
+  user: { name: string };
+}
+
+export interface TimeStatus {
+  active: TimeEntry | null;
+  todayTotal: number; // completed minutes today (does not include live session)
 }
 
 export interface AppNotification {
