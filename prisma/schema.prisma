@@ -263,6 +263,7 @@ model TimeEntry {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   clockIn   DateTime  @default(now())
   clockOut  DateTime?
+  isBreak   Boolean   @default(false)
   createdAt DateTime  @default(now())
 
   @@index([userId])

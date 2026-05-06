@@ -57,6 +57,16 @@ export interface TimeEntryWithUser extends TimeEntry {
 export interface TimeStatus {
   active: TimeEntry | null;
   todayTotal: number; // completed minutes today (does not include live session)
+  lastClockOut: string | null; // ISO string of most recent completed session's clockOut
+}
+
+export interface UserActivity {
+  userId: string;
+  name: string;
+  status: "on_clock" | "on_break" | "clocked_out" | "not_active";
+  clockIn: string | null;
+  clockOut: string | null;
+  totalMinutes: number;
 }
 
 export interface AppNotification {

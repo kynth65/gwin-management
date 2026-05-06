@@ -26,5 +26,13 @@ export async function GET() {
     return acc + Math.floor(ms / 60000);
   }, 0);
 
-  return NextResponse.json({ active, todayTotal });
+  // Only expose lastClockOut for break entries so full clock-outs don't trigger "on break" UI
+  const breakEntries = todayEntries.filter((e) => e.isBreak);
+  const lastClockOut = breakEntries.length > 0
+    ? [...breakEntries]
+        .sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())[0]
+        .clockOut
+    : null;
+
+  return NextResponse.json({ active, todayTotal, lastClockOut });
 }
