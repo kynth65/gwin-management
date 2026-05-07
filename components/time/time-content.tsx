@@ -12,6 +12,7 @@ interface TimeContentProps {
 }
 
 type MainTab = "time" | "activity" | "reports";
+type ReportSubTab = "timesheet" | "pay";
 type ActivityFilter = "all" | UserActivity["status"];
 
 // Always produces HH:MM:SS with leading zeros — used for the big elapsed display
@@ -149,6 +150,7 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
 
   // Reports tab
   const [reportAll, setReportAll] = useState(false);
+  const [reportSubTab, setReportSubTab] = useState<ReportSubTab>("timesheet");
   const [reportEntries, setReportEntries] = useState<TimeEntryWithUser[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
   const [allStaff, setAllStaff] = useState<{ id: string; name: string; hourlyRate: number | null }[]>([]);
@@ -339,15 +341,21 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
     .filter((e) => new Date(e.clockIn) >= startOfDay)
     .sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime());
 
-  // Reports — per-member breakdown; pass full staff list when admin so zero-data members still appear
+  // Reports — per-member breakdown; pass full staff list when admin + all-staff so zero-data members appear.
+  // Always enrich hourlyRate from allStaff for admins so Pay sub-tab works in both My Data and All Staff modes.
   const memberReports = buildMemberReports(
     reportEntries,
     isAdmin && reportAll ? allStaff : undefined
-  );
+  ).map((m) => {
+    if (isAdmin && m.hourlyRate === null && allStaff.length > 0) {
+      const found = allStaff.find((s) => s.id === m.userId);
+      return { ...m, hourlyRate: found?.hourlyRate ?? null };
+    }
+    return m;
+  });
   const totalRegularMinutes = memberReports.reduce((a, m) => a + m.regularMinutes, 0);
   const totalUnpaidBreakMinutes = memberReports.reduce((a, m) => a + m.unpaidBreakMinutes, 0);
   const totalPaidMinutes = memberReports.reduce((a, m) => a + m.paidMinutes, 0);
-  const showPayColumn = isAdmin && reportAll;
   const totalEstimatedPay = memberReports.reduce((a, m) => {
     if (!m.hourlyRate || m.paidMinutes === 0) return a;
     return a + (m.paidMinutes / 60) * m.hourlyRate;
@@ -946,10 +954,28 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
             </div>
           </div>
 
+          {/* Report sub-tabs */}
+          <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
+            {(["timesheet", "pay"] as const).map((st) => (
+              <button
+                key={st}
+                onClick={() => setReportSubTab(st)}
+                className={cn(
+                  "px-4 py-1.5 rounded-md text-sm font-medium transition-colors",
+                  reportSubTab === st
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {st === "timesheet" ? "Time Sheet" : "Pay"}
+              </button>
+            ))}
+          </div>
+
           {reportLoading ? (
             <>
               {/* Totals skeleton */}
-              <div className={`grid gap-4 ${showPayColumn ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+              <div className="grid gap-4 grid-cols-3">
                 {Array.from({ length: 3 }).map((_, i) => (
                   <div key={i} className="rounded-xl border bg-card p-5 space-y-2 animate-pulse">
                     <div className="h-3 w-36 rounded-sm bg-muted-foreground/20" />
@@ -998,10 +1024,10 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
                 </table>
               </div>
             </>
-          ) : (
+          ) : reportSubTab === "timesheet" ? (
             <>
-              {/* Totals summary — big numbers */}
-              <div className={`grid gap-4 ${showPayColumn ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+              {/* TIME SHEET sub-tab */}
+              <div className="grid gap-4 grid-cols-3">
                 <div className="rounded-xl border bg-card p-5 space-y-1">
                   <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                     Total Regular Hours
@@ -1026,19 +1052,8 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
                     {formatDurationHuman(totalPaidMinutes)}
                   </p>
                 </div>
-                {showPayColumn && (
-                  <div className="rounded-xl border bg-primary/5 border-primary/20 p-5 space-y-1">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-primary">
-                      Est. Payroll
-                    </p>
-                    <p className="text-3xl font-bold tabular-nums font-mono text-primary">
-                      ${totalEstimatedPay.toFixed(2)}
-                    </p>
-                  </div>
-                )}
               </div>
 
-              {/* Member table */}
               <div className="rounded-xl border bg-card overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
@@ -1055,17 +1070,82 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
                       <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-green-600 dark:text-green-400">
                         Paid Hours
                       </th>
-                      {showPayColumn && (
-                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-primary">
-                          Est. Pay
-                        </th>
-                      )}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {memberReports.length === 0 ? (
                       <tr>
-                        <td colSpan={showPayColumn ? 5 : 4} className="px-4 py-12 text-center text-muted-foreground">
+                        <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
+                          No time entries found for this period.
+                        </td>
+                      </tr>
+                    ) : (
+                      memberReports.map((m) => {
+                        const hasData = m.regularMinutes > 0;
+                        return (
+                          <tr key={m.userId} className={cn("hover:bg-muted/20 transition-colors", !hasData && "opacity-50")}>
+                            <td className="px-4 py-3 font-medium">{m.name}</td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
+                              {hasData ? formatDurationHuman(m.regularMinutes) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">
+                              {m.unpaidBreakMinutes > 0 ? formatDurationHuman(m.unpaidBreakMinutes) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-green-600 dark:text-green-400">
+                              {hasData ? formatDurationHuman(m.paidMinutes) : "—"}
+                            </td>
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* PAY sub-tab */}
+              <div className="grid gap-4 grid-cols-2">
+                <div className="rounded-xl border bg-green-500/5 border-green-500/20 p-5 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-green-600 dark:text-green-400">
+                    Est. Payroll
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums font-mono text-green-600 dark:text-green-400">
+                    ${totalEstimatedPay.toFixed(2)}
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-card p-5 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Total Paid Hours
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums font-mono text-foreground">
+                    {formatDurationHuman(totalPaidMinutes)}
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                        Name
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                        Pay Rate
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-green-600 dark:text-green-400">
+                        Paid Hours
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-green-600 dark:text-green-400">
+                        Est. Pay
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {memberReports.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="px-4 py-12 text-center text-muted-foreground">
                           No time entries found for this period.
                         </td>
                       </tr>
@@ -1079,19 +1159,14 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
                           <tr key={m.userId} className={cn("hover:bg-muted/20 transition-colors", !hasData && "opacity-50")}>
                             <td className="px-4 py-3 font-medium">{m.name}</td>
                             <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
-                              {hasData ? formatDurationHuman(m.regularMinutes) : "—"}
+                              {m.hourlyRate != null ? `$${m.hourlyRate.toFixed(2)}/hr` : "—"}
                             </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">
-                              {m.unpaidBreakMinutes > 0 ? formatDurationHuman(m.unpaidBreakMinutes) : "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-green-600 dark:text-green-400">
+                            <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-foreground">
                               {hasData ? formatDurationHuman(m.paidMinutes) : "—"}
                             </td>
-                            {showPayColumn && (
-                              <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-primary">
-                                {estPay !== null ? `$${estPay.toFixed(2)}` : "—"}
-                              </td>
-                            )}
+                            <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-green-600 dark:text-green-400">
+                              {estPay !== null ? `$${estPay.toFixed(2)}` : "—"}
+                            </td>
                           </tr>
                         );
                       })
