@@ -26,13 +26,13 @@ export async function GET() {
     return acc + Math.floor(ms / 60000);
   }, 0);
 
-  // Only expose lastClockOut for break entries so full clock-outs don't trigger "on break" UI
-  const breakEntries = todayEntries.filter((e) => e.isBreak);
-  const lastClockOut = breakEntries.length > 0
-    ? [...breakEntries]
-        .sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime())[0]
-        .clockOut
-    : null;
+  // Only expose lastClockOut if the most recent completed entry was a break.
+  // Sorting by clockOut ensures a regular clock-out after a break correctly returns null.
+  const sortedByEnd = [...todayEntries].sort(
+    (a, b) => new Date(b.clockOut!).getTime() - new Date(a.clockOut!).getTime()
+  );
+  const lastCompleted = sortedByEnd[0];
+  const lastClockOut = lastCompleted?.isBreak ? lastCompleted.clockOut : null;
 
   return NextResponse.json({ active, todayTotal, lastClockOut });
 }

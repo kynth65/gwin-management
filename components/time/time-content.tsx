@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { BarChart2, Clock, Coffee, LogIn, LogOut, Search, Timer, Users } from "lucide-react";
+import { Clock, Coffee, LogIn, LogOut, Search, Timer, Users } from "lucide-react";
 import { toast } from "sonner";
-import { cn, formatDate, formatDuration, formatDurationHuman } from "@/lib/utils";
+import { cn, formatDuration, formatDurationHuman } from "@/lib/utils";
 import type { TimeEntryWithUser, TimeStatus, UserActivity } from "@/types";
 
 interface TimeContentProps {
@@ -13,7 +13,6 @@ interface TimeContentProps {
 
 type MainTab = "time" | "activity" | "reports";
 type ActivityFilter = "all" | UserActivity["status"];
-type ReportPreset = "today" | "week" | "month" | "last-month" | "custom";
 
 // Always produces HH:MM:SS with leading zeros — used for the big elapsed display
 function formatElapsed(ms: number): string {
@@ -79,21 +78,52 @@ function entryMinutes(entry: TimeEntryWithUser): number {
   return Math.floor((out - new Date(entry.clockIn).getTime()) / 60000);
 }
 
+interface MemberReport {
+  userId: string;
+  name: string;
+  regularMinutes: number;
+  unpaidBreakMinutes: number;
+  paidMinutes: number;
+  hourlyRate: number | null;
+}
+
+function buildMemberReports(
+  entries: TimeEntryWithUser[],
+  allUsers?: { id: string; name: string; hourlyRate: number | null }[]
+): MemberReport[] {
+  const byUser = new Map<string, TimeEntryWithUser[]>();
+  for (const entry of entries) {
+    if (!byUser.has(entry.userId)) byUser.set(entry.userId, []);
+    byUser.get(entry.userId)!.push(entry);
+  }
+
+  const usersToShow: { id: string; name: string; hourlyRate: number | null }[] = allUsers
+    ? allUsers
+    : Array.from(byUser.entries()).map(([id, ue]) => ({ id, name: ue[0].user.name, hourlyRate: null }));
+
+  return usersToShow
+    .map(({ id: uid, name, hourlyRate }) => {
+      const userEntries = byUser.get(uid) ?? [];
+      const total = userEntries.reduce((a, e) => a + entryMinutes(e), 0);
+      const breakMins = userEntries.filter((e) => e.isBreak).reduce((a, e) => a + entryMinutes(e), 0);
+      return {
+        userId: uid,
+        name,
+        regularMinutes: total,
+        unpaidBreakMinutes: breakMins,
+        paidMinutes: total - breakMins,
+        hourlyRate,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 function sumMinutesSince(entries: TimeEntryWithUser[], since: Date): number {
   return entries
     .filter((e) => new Date(e.clockIn) >= since)
     .reduce((acc, e) => acc + entryMinutes(e), 0);
 }
 
-function groupByDay(entries: TimeEntryWithUser[]): Map<string, TimeEntryWithUser[]> {
-  const map = new Map<string, TimeEntryWithUser[]>();
-  for (const entry of entries) {
-    const key = formatDate(entry.clockIn);
-    if (!map.has(key)) map.set(key, []);
-    map.get(key)!.push(entry);
-  }
-  return map;
-}
 
 function toInputDate(d: Date): string {
   return d.toISOString().split("T")[0];
@@ -108,7 +138,8 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
   const [ownEntries, setOwnEntries] = useState<TimeEntryWithUser[]>([]);
   const [activeStaff, setActiveStaff] = useState<TimeEntryWithUser[]>([]);
   const [loading, setLoading] = useState(false);
-  const [, setTick] = useState(0);
+  const [liveTime, setLiveTime] = useState("");
+  const [liveDate, setLiveDate] = useState("");
 
   // Activity tab
   const [activityData, setActivityData] = useState<UserActivity[]>([]);
@@ -120,7 +151,7 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
   const [reportAll, setReportAll] = useState(false);
   const [reportEntries, setReportEntries] = useState<TimeEntryWithUser[]>([]);
   const [reportLoading, setReportLoading] = useState(false);
-  const [selectedPreset, setSelectedPreset] = useState<ReportPreset>("month");
+  const [allStaff, setAllStaff] = useState<{ id: string; name: string; hourlyRate: number | null }[]>([]);
 
   const now = new Date();
   const [fromDate, setFromDate] = useState(
@@ -151,6 +182,17 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
       if (res.ok) {
         const all: TimeEntryWithUser[] = await res.json();
         setActiveStaff(all.filter((e) => e.clockOut === null));
+      }
+    } catch {}
+  }
+
+  async function fetchAllStaff() {
+    if (!isAdmin) return;
+    try {
+      const res = await fetch("/api/users");
+      if (res.ok) {
+        const users: { id: string; name: string; hourlyRate: number | null }[] = await res.json();
+        setAllStaff(users);
       }
     } catch {}
   }
@@ -190,6 +232,7 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
     fetchStatus();
     fetchOwnEntries();
     fetchActiveStaff();
+    fetchAllStaff();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const prevMainTabRef = useRef<string>("");
@@ -204,7 +247,13 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
   }, [mainTab]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    function updateClock() {
+      const now = new Date();
+      setLiveTime(now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }));
+      setLiveDate(now.toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" }));
+    }
+    updateClock();
+    const id = setInterval(updateClock, 1000);
     return () => clearInterval(id);
   }, []);
 
@@ -266,28 +315,6 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
     }
   }
 
-  function applyPreset(preset: Exclude<ReportPreset, "custom">) {
-    setSelectedPreset(preset);
-    const n = new Date();
-    let from: string, to: string;
-    if (preset === "today") {
-      from = to = toInputDate(n);
-    } else if (preset === "week") {
-      const ws = new Date(n);
-      ws.setDate(n.getDate() - n.getDay());
-      from = toInputDate(ws);
-      to = toInputDate(n);
-    } else if (preset === "month") {
-      from = toInputDate(new Date(n.getFullYear(), n.getMonth(), 1));
-      to = toInputDate(n);
-    } else {
-      from = toInputDate(new Date(n.getFullYear(), n.getMonth() - 1, 1));
-      to = toInputDate(new Date(n.getFullYear(), n.getMonth(), 0));
-    }
-    setFromDate(from);
-    setToDate(to);
-    loadReportEntries(reportAll, from, to);
-  }
 
   const isClockedIn = !!status?.active;
   const currentElapsed = status?.active
@@ -312,27 +339,19 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
     .filter((e) => new Date(e.clockIn) >= startOfDay)
     .sort((a, b) => new Date(b.clockIn).getTime() - new Date(a.clockIn).getTime());
 
-  const liveTime = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-
-  const liveDate = new Date().toLocaleDateString([], {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-  });
-
-  // Reports
-  const reportGrouped = groupByDay(reportEntries);
-  const reportTotalMinutes = reportEntries.reduce((a, e) => a + entryMinutes(e), 0);
-  const reportBreakMinutes = reportEntries.filter((e) => e.isBreak).reduce((a, e) => a + entryMinutes(e), 0);
-  const reportWorkMinutes = reportTotalMinutes - reportBreakMinutes;
-  const reportDays = reportGrouped.size;
-  const reportUniqueUsers = new Set(reportEntries.map((e) => e.userId)).size;
-  const reportAvgMinutes = reportDays > 0 ? Math.floor(reportWorkMinutes / reportDays) : 0;
+  // Reports — per-member breakdown; pass full staff list when admin so zero-data members still appear
+  const memberReports = buildMemberReports(
+    reportEntries,
+    isAdmin && reportAll ? allStaff : undefined
+  );
+  const totalRegularMinutes = memberReports.reduce((a, m) => a + m.regularMinutes, 0);
+  const totalUnpaidBreakMinutes = memberReports.reduce((a, m) => a + m.unpaidBreakMinutes, 0);
+  const totalPaidMinutes = memberReports.reduce((a, m) => a + m.paidMinutes, 0);
+  const showPayColumn = isAdmin && reportAll;
+  const totalEstimatedPay = memberReports.reduce((a, m) => {
+    if (!m.hourlyRate || m.paidMinutes === 0) return a;
+    return a + (m.paidMinutes / 60) * m.hourlyRate;
+  }, 0);
 
   // Activity
   const sortedActivity = [...activityData].sort(
@@ -716,20 +735,30 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
         <div className="space-y-4">
           {/* Status summary mini-cards */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {(["on_clock", "on_break", "clocked_out", "not_active"] as const).map((key) => {
-              const cfg = getStatusConfig(key);
-              return (
-                <div key={key} className={cn("rounded-xl border bg-card p-4 space-y-1", cfg.miniCardBg)}>
-                  <div className="flex items-center gap-1.5">
-                    <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dot)} />
-                    <p className="text-xs text-muted-foreground truncate">{cfg.label}</p>
+            {activityLoading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="rounded-xl border bg-card p-4 space-y-2 animate-pulse">
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-muted-foreground/20 shrink-0" />
+                      <div className="h-3 w-20 rounded-sm bg-muted-foreground/20" />
+                    </div>
+                    <div className="h-8 w-10 rounded-sm bg-muted-foreground/20" />
                   </div>
-                  <p className={cn("text-2xl font-bold tabular-nums", cfg.miniCardText)}>
-                    {activityCounts[key]}
-                  </p>
-                </div>
-              );
-            })}
+                ))
+              : (["on_clock", "on_break", "clocked_out", "not_active"] as const).map((key) => {
+                  const cfg = getStatusConfig(key);
+                  return (
+                    <div key={key} className={cn("rounded-xl border bg-card p-4 space-y-1", cfg.miniCardBg)}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={cn("w-2 h-2 rounded-full shrink-0", cfg.dot)} />
+                        <p className="text-xs text-muted-foreground truncate">{cfg.label}</p>
+                      </div>
+                      <p className={cn("text-2xl font-bold tabular-nums", cfg.miniCardText)}>
+                        {activityCounts[key]}
+                      </p>
+                    </div>
+                  );
+                })}
           </div>
 
           {/* Search + status filters */}
@@ -789,8 +818,18 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
           {/* Employee list */}
           <div className="rounded-xl border bg-card overflow-hidden">
             {activityLoading ? (
-              <div className="flex items-center justify-center py-16 text-muted-foreground text-sm">
-                Loading activity…
+              <div className="divide-y divide-border">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-4 py-3.5 animate-pulse">
+                    <div className="w-2.5 h-2.5 rounded-full bg-muted-foreground/20 shrink-0" />
+                    <div className="h-4 rounded-sm bg-muted-foreground/20 flex-1 max-w-[160px]" />
+                    <div className="h-6 w-24 rounded-full bg-muted-foreground/20 shrink-0" />
+                    <div className="shrink-0 w-32 hidden sm:flex flex-col items-end gap-1.5">
+                      <div className="h-3 w-20 rounded-sm bg-muted-foreground/20" />
+                      <div className="h-4 w-14 rounded-sm bg-muted-foreground/20" />
+                    </div>
+                  </div>
+                ))}
               </div>
             ) : filteredActivity.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
@@ -857,130 +896,212 @@ export function TimeContent({ userId, isAdmin }: TimeContentProps) {
 
       {/* ── REPORTS TAB ── */}
       {mainTab === "reports" && (
-        <>
-          {/* Filter card */}
-          <div className="rounded-xl border bg-card p-4 space-y-4">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Preset dropdown */}
-              <div className="flex items-center gap-2">
-                <label className="text-xs text-muted-foreground font-medium whitespace-nowrap">
-                  Period
-                </label>
-                <select
-                  value={selectedPreset}
-                  onChange={(e) => {
-                    const v = e.target.value as ReportPreset;
-                    if (v === "custom") {
-                      setSelectedPreset("custom");
-                    } else {
-                      applyPreset(v);
-                    }
-                  }}
-                  className="px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="today">Today</option>
-                  <option value="week">This Week</option>
-                  <option value="month">This Month</option>
-                  <option value="last-month">Last Month</option>
-                  <option value="custom">Custom Range</option>
-                </select>
-              </div>
-
-              {/* All Staff toggle — admin only */}
-              {isAdmin && (
-                <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
-                  {([false, true] as const).map((v) => (
-                    <button
-                      key={String(v)}
-                      onClick={() => {
-                        setReportAll(v);
-                        loadReportEntries(v, fromDate, toDate);
-                      }}
-                      className={cn(
-                        "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
-                        reportAll === v
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground"
-                      )}
-                    >
-                      {v ? "All Staff" : "My Data"}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Custom date inputs — only shown when "Custom Range" is selected */}
-            {selectedPreset === "custom" && (
-              <div className="flex flex-wrap items-end gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground font-medium">From</label>
-                  <input
-                    type="date"
-                    value={fromDate}
-                    onChange={(e) => setFromDate(e.target.value)}
-                    className="px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground font-medium">To</label>
-                  <input
-                    type="date"
-                    value={toDate}
-                    onChange={(e) => setToDate(e.target.value)}
-                    className="px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-                  />
-                </div>
-                <button
-                  onClick={() => loadReportEntries(reportAll, fromDate, toDate)}
-                  disabled={reportLoading}
-                  className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
-                >
-                  {reportLoading ? "Loading…" : "Apply"}
-                </button>
+        <div className="space-y-4">
+          {/* Top row: All Staff toggle left, date picker right */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            {isAdmin && (
+              <div className="flex gap-1 bg-muted rounded-lg p-1 w-fit">
+                {([false, true] as const).map((v) => (
+                  <button
+                    key={String(v)}
+                    onClick={() => {
+                      setReportAll(v);
+                      loadReportEntries(v, fromDate, toDate);
+                    }}
+                    className={cn(
+                      "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                      reportAll === v
+                        ? "bg-background text-foreground shadow-sm"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    {v ? "All Staff" : "My Data"}
+                  </button>
+                ))}
               </div>
             )}
+
+            {/* Date range picker — top right */}
+            <div className="flex items-center gap-2 flex-wrap ml-auto">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <span className="text-muted-foreground text-sm">→</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="px-3 py-2 rounded-lg border bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={() => loadReportEntries(reportAll, fromDate, toDate)}
+                disabled={reportLoading}
+                className="px-4 py-2 rounded-lg bg-primary text-primary-foreground text-sm font-medium hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {reportLoading ? "Loading…" : "Apply"}
+              </button>
+            </div>
           </div>
 
-          {/* Summary stat cards */}
           {reportLoading ? (
-            <div className="flex items-center justify-center py-12 text-muted-foreground text-sm">
-              Loading…
-            </div>
+            <>
+              {/* Totals skeleton */}
+              <div className={`grid gap-4 ${showPayColumn ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="rounded-xl border bg-card p-5 space-y-2 animate-pulse">
+                    <div className="h-3 w-36 rounded-sm bg-muted-foreground/20" />
+                    <div className="h-9 w-28 rounded-sm bg-muted-foreground/20" />
+                  </div>
+                ))}
+              </div>
+
+              {/* Table skeleton */}
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-3">
+                        <div className="h-3 w-16 rounded-sm bg-muted-foreground/20 animate-pulse" />
+                      </th>
+                      <th className="text-right px-4 py-3">
+                        <div className="h-3 w-24 rounded-sm bg-muted-foreground/20 ml-auto animate-pulse" />
+                      </th>
+                      <th className="text-right px-4 py-3">
+                        <div className="h-3 w-24 rounded-sm bg-muted-foreground/20 ml-auto animate-pulse" />
+                      </th>
+                      <th className="text-right px-4 py-3">
+                        <div className="h-3 w-20 rounded-sm bg-muted-foreground/20 ml-auto animate-pulse" />
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border animate-pulse">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-3">
+                          <div className="h-4 rounded-sm bg-muted-foreground/20 w-32" />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="h-4 rounded-sm bg-muted-foreground/20 w-20 ml-auto" />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="h-4 rounded-sm bg-muted-foreground/20 w-12 ml-auto" />
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="h-4 rounded-sm bg-muted-foreground/20 w-20 ml-auto" />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <StatCard
-                icon={<Timer className="h-4 w-4" />}
-                label="Work Hours"
-                value={formatDurationHuman(reportWorkMinutes)}
-              />
-              <StatCard
-                icon={<Coffee className="h-4 w-4" />}
-                label="Break Time"
-                value={formatDurationHuman(reportBreakMinutes)}
-                muted
-              />
-              <StatCard
-                icon={<BarChart2 className="h-4 w-4" />}
-                label="Days Worked"
-                value={String(reportDays)}
-              />
-              {reportAll && isAdmin ? (
-                <StatCard
-                  icon={<Users className="h-4 w-4" />}
-                  label="Team Members"
-                  value={String(reportUniqueUsers)}
-                />
-              ) : (
-                <StatCard
-                  icon={<Clock className="h-4 w-4" />}
-                  label="Avg / Day"
-                  value={formatDurationHuman(reportAvgMinutes)}
-                />
-              )}
-            </div>
+            <>
+              {/* Totals summary — big numbers */}
+              <div className={`grid gap-4 ${showPayColumn ? "grid-cols-2 sm:grid-cols-4" : "grid-cols-3"}`}>
+                <div className="rounded-xl border bg-card p-5 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Total Regular Hours
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums font-mono">
+                    {formatDurationHuman(totalRegularMinutes)}
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-amber-500/5 border-amber-500/20 p-5 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                    Total Unpaid Break
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums font-mono text-amber-600 dark:text-amber-400">
+                    {formatDurationHuman(totalUnpaidBreakMinutes)}
+                  </p>
+                </div>
+                <div className="rounded-xl border bg-green-500/5 border-green-500/20 p-5 space-y-1">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-green-600 dark:text-green-400">
+                    Total Paid Hours
+                  </p>
+                  <p className="text-3xl font-bold tabular-nums font-mono text-green-600 dark:text-green-400">
+                    {formatDurationHuman(totalPaidMinutes)}
+                  </p>
+                </div>
+                {showPayColumn && (
+                  <div className="rounded-xl border bg-primary/5 border-primary/20 p-5 space-y-1">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-primary">
+                      Est. Payroll
+                    </p>
+                    <p className="text-3xl font-bold tabular-nums font-mono text-primary">
+                      ${totalEstimatedPay.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Member table */}
+              <div className="rounded-xl border bg-card overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b bg-muted/40">
+                      <th className="text-left px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                        Name
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-muted-foreground">
+                        Regular Time
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                        Unpaid Break
+                      </th>
+                      <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-green-600 dark:text-green-400">
+                        Paid Hours
+                      </th>
+                      {showPayColumn && (
+                        <th className="text-right px-4 py-3 font-semibold text-xs uppercase tracking-wider text-primary">
+                          Est. Pay
+                        </th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {memberReports.length === 0 ? (
+                      <tr>
+                        <td colSpan={showPayColumn ? 5 : 4} className="px-4 py-12 text-center text-muted-foreground">
+                          No time entries found for this period.
+                        </td>
+                      </tr>
+                    ) : (
+                      memberReports.map((m) => {
+                        const hasData = m.regularMinutes > 0;
+                        const estPay = m.hourlyRate && m.paidMinutes > 0
+                          ? (m.paidMinutes / 60) * m.hourlyRate
+                          : null;
+                        return (
+                          <tr key={m.userId} className={cn("hover:bg-muted/20 transition-colors", !hasData && "opacity-50")}>
+                            <td className="px-4 py-3 font-medium">{m.name}</td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums text-muted-foreground">
+                              {hasData ? formatDurationHuman(m.regularMinutes) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums text-amber-600 dark:text-amber-400">
+                              {m.unpaidBreakMinutes > 0 ? formatDurationHuman(m.unpaidBreakMinutes) : "—"}
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-green-600 dark:text-green-400">
+                              {hasData ? formatDurationHuman(m.paidMinutes) : "—"}
+                            </td>
+                            {showPayColumn && (
+                              <td className="px-4 py-3 text-right font-mono tabular-nums font-semibold text-primary">
+                                {estPay !== null ? `$${estPay.toFixed(2)}` : "—"}
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
           )}
-        </>
+        </div>
       )}
     </div>
   );
