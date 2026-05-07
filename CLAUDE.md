@@ -60,6 +60,15 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 | `app/api/profile/` | Update current user's name |
 | `app/api/profile/password/` | Change current user's password |
 
+## Time Tracking UI
+
+`components/time/time-content.tsx` drives the `/time` page. It has three main tabs: **Time** (clock-in/out), **Activity** (session history), and **Reports** (aggregated view). The Reports tab has two sub-tabs:
+
+- **Time Sheet** — shows regular hours, unpaid break, and paid hours per member (no pay data).
+- **Pay** — shows pay rate, paid hours, and estimated pay per member; visible to all users but only meaningful when `hourlyRate` is set. Admins viewing "My Data" mode still get `hourlyRate` enriched from the full staff list so per-user pay is accurate.
+
+`buildMemberReports` (same file) aggregates `TimeEntry` rows into per-member totals. When `isAdmin && reportAll` an optional `allStaff` list is passed so members with zero hours still appear as rows.
+
 ## Authorization
 
 - `session.user.isAdmin` (from `UserRole.isAdmin`) gates admin-only API actions.
@@ -79,7 +88,7 @@ All pricing math is in `lib/excel.ts`:
 - `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `ASSIGNED | SEEN | STARTED | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`; `deletedAt` (nullable) enables soft delete — queries must filter `deletedAt: null` for active tasks; the Tasks UI has an Inbox, Sent, and Deleted tab
 - `PostponeRequest` — linked to a `Task`; submitted by the assignee, reviewed by an admin; statuses: `PENDING | APPROVED | REJECTED`; tracks `extensionDays`, optional `assignerNote`, and reviewer metadata
 - `Notification` — per-user in-app notifications; types: `TASK_ASSIGNED | TASK_SEEN | TASK_STARTED | TASK_COMPLETED | POSTPONE_REQUESTED | POSTPONE_APPROVED | POSTPONE_REJECTED | TASK_OVERDUE`; has `read` flag; linked to a `taskId` for deep-linking
-- `TimeEntry` — tracks per-user work sessions; `clockIn` (DateTime) and `clockOut` (nullable DateTime); duration calculated on clock-out; linked to `User`
+- `TimeEntry` — tracks per-user work sessions; `clockIn` (DateTime) and `clockOut` (nullable DateTime); duration calculated on clock-out; linked to `User`; `User.hourlyRate` (Decimal, nullable) is used in the Reports Pay sub-tab to calculate estimated pay
 - `Announcement` — authored by admin users; has a `pinned` flag; displayed in the dashboard what's-new feed
 - `Order.lineItems` is stored as `Json` (raw Shopify line items array)
 - `AutomationLog` is append-only — never updated, only created; `SHEET_EXPORT` type logs Google Sheets writes
