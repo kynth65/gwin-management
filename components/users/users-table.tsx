@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Trash2 } from "lucide-react";
+import { Check, Pencil, Trash2, X } from "lucide-react";
 
 type RoleOption = {
   id: string;
@@ -15,6 +15,7 @@ type UserRow = {
   id: string;
   name: string;
   email: string;
+  hourlyRate: number | null;
   role: RoleOption;
   createdAt: Date;
 };
@@ -30,6 +31,9 @@ export function UsersTable({
 }) {
   const [users, setUsers] = useState(initial);
   const [deleting, setDeleting] = useState<string | null>(null);
+  const [editingPayRate, setEditingPayRate] = useState<string | null>(null);
+  const [payRateInput, setPayRateInput] = useState("");
+  const [savingPayRate, setSavingPayRate] = useState<string | null>(null);
   const router = useRouter();
 
   async function handleRoleChange(id: string, roleId: string) {
@@ -48,6 +52,38 @@ export function UsersTable({
     } catch {
       setUsers(prev);
       toast.error("Failed to update role");
+    }
+  }
+
+  function startEditPayRate(user: UserRow) {
+    setEditingPayRate(user.id);
+    setPayRateInput(user.hourlyRate !== null ? String(user.hourlyRate) : "");
+  }
+
+  async function handlePayRateSave(id: string) {
+    const raw = payRateInput.trim();
+    const value = raw === "" ? null : parseFloat(raw);
+    if (value !== null && (isNaN(value) || value < 0)) {
+      toast.error("Enter a valid hourly rate");
+      return;
+    }
+    setSavingPayRate(id);
+    const prev = users;
+    setUsers((u) => u.map((x) => (x.id === id ? { ...x, hourlyRate: value } : x)));
+    setEditingPayRate(null);
+    try {
+      const res = await fetch(`/api/users/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ hourlyRate: value }),
+      });
+      if (!res.ok) throw new Error();
+      toast.success("Pay rate updated");
+    } catch {
+      setUsers(prev);
+      toast.error("Failed to update pay rate");
+    } finally {
+      setSavingPayRate(null);
     }
   }
 
@@ -86,6 +122,7 @@ export function UsersTable({
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Name</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Email</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Role</th>
+            <th className="text-left px-4 py-3 font-medium text-muted-foreground">Pay Rate</th>
             <th className="text-left px-4 py-3 font-medium text-muted-foreground">Joined</th>
             <th className="px-4 py-3" />
           </tr>
@@ -108,6 +145,54 @@ export function UsersTable({
                     </option>
                   ))}
                 </select>
+              </td>
+              <td className="px-4 py-3">
+                {editingPayRate === user.id ? (
+                  <div className="flex items-center gap-1">
+                    <span className="text-xs text-muted-foreground">$</span>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={payRateInput}
+                      onChange={(e) => setPayRateInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") handlePayRateSave(user.id);
+                        if (e.key === "Escape") setEditingPayRate(null);
+                      }}
+                      className="w-20 px-2 py-1 rounded border text-xs bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+                      autoFocus
+                    />
+                    <span className="text-xs text-muted-foreground">/hr</span>
+                    <button
+                      onClick={() => handlePayRateSave(user.id)}
+                      className="p-1 text-green-600 hover:bg-green-500/10 rounded transition-colors"
+                      title="Save"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setEditingPayRate(null)}
+                      className="p-1 text-muted-foreground hover:bg-muted rounded transition-colors"
+                      title="Cancel"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => startEditPayRate(user)}
+                    disabled={savingPayRate === user.id}
+                    className="flex items-center gap-2 text-sm hover:text-foreground transition-colors disabled:opacity-50"
+                    title="Edit pay rate"
+                  >
+                    <span className={user.hourlyRate !== null ? "font-mono tabular-nums" : "text-muted-foreground"}>
+                      {user.hourlyRate !== null ? `$${user.hourlyRate.toFixed(2)}/hr` : "Not set"}
+                    </span>
+                    <Pencil className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                  </button>
+                )}
               </td>
               <td className="px-4 py-3 text-muted-foreground">
                 {new Date(user.createdAt).toLocaleDateString()}

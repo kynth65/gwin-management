@@ -18,6 +18,7 @@ const schema = z.object({
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Minimum 6 characters"),
   roleId: z.string().min(1, "Role is required"),
+  hourlyRate: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -33,21 +34,31 @@ export function AddUserForm({ roles }: { roles: RoleOption[] }) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { roleId: roles[0]?.id ?? "" },
+    defaultValues: { roleId: roles[0]?.id ?? "", hourlyRate: "" },
   });
 
   const onSubmit = async (data: FormData) => {
     setLoading(true);
     try {
+      const hourlyRate = data.hourlyRate && data.hourlyRate.trim() !== ""
+        ? parseFloat(data.hourlyRate)
+        : null;
+
+      if (hourlyRate !== null && (isNaN(hourlyRate) || hourlyRate < 0)) {
+        toast.error("Enter a valid hourly rate");
+        setLoading(false);
+        return;
+      }
+
       const res = await fetch("/api/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, hourlyRate }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       toast.success(`User "${data.name}" added successfully`);
-      reset({ roleId: roles[0]?.id ?? "" });
+      reset({ roleId: roles[0]?.id ?? "", hourlyRate: "" });
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add user");
@@ -108,6 +119,29 @@ export function AddUserForm({ roles }: { roles: RoleOption[] }) {
           {errors.roleId && (
             <p className="text-destructive text-xs mt-1">{errors.roleId.message}</p>
           )}
+        </div>
+
+        <div className="col-span-2">
+          <label className="block text-sm font-medium mb-1">
+            Hourly Pay Rate
+            <span className="ml-1.5 text-xs font-normal text-muted-foreground">(optional)</span>
+          </label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+              $
+            </span>
+            <input
+              {...register("hourlyRate")}
+              type="number"
+              min="0"
+              step="0.01"
+              placeholder="0.00"
+              className="w-full pl-7 pr-12 py-2 border rounded-md text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary"
+            />
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground pointer-events-none">
+              /hr
+            </span>
+          </div>
         </div>
       </div>
 
