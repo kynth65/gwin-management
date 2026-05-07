@@ -11,16 +11,21 @@ import { AddRoleForm } from "@/components/users/add-role-form";
 import { TableSkeleton } from "@/components/shared/skeletons";
 
 async function getUsers() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     select: {
       id: true,
       name: true,
       email: true,
+      hourlyRate: true,
       role: { select: { id: true, name: true, isAdmin: true } },
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
   });
+  return users.map((u) => ({
+    ...u,
+    hourlyRate: u.hourlyRate !== null ? Number(u.hourlyRate) : null,
+  }));
 }
 
 async function getRoles() {

@@ -12,6 +12,7 @@ const createUserSchema = z.object({
   email: z.string().email("Invalid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
   roleId: z.string().min(1, "Role is required"),
+  hourlyRate: z.number().min(0).nullable().optional(),
 });
 
 export async function GET() {
@@ -25,13 +26,16 @@ export async function GET() {
       id: true,
       name: true,
       email: true,
+      hourlyRate: true,
       role: { select: { id: true, name: true, isAdmin: true } },
       createdAt: true,
     },
     orderBy: { createdAt: "desc" },
   });
 
-  return NextResponse.json(users);
+  return NextResponse.json(
+    users.map((u) => ({ ...u, hourlyRate: u.hourlyRate !== null ? Number(u.hourlyRate) : null }))
+  );
 }
 
 export async function POST(req: Request) {
@@ -46,7 +50,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.errors[0].message }, { status: 400 });
   }
 
-  const { name, email, password, roleId } = parsed.data;
+  const { name, email, password, roleId, hourlyRate } = parsed.data;
 
   const roleExists = await prisma.userRole.findUnique({ where: { id: roleId } });
   if (!roleExists) {
@@ -57,16 +61,20 @@ export async function POST(req: Request) {
 
   try {
     const user = await prisma.user.create({
-      data: { name, email, password: hashedPassword, roleId },
+      data: { name, email, password: hashedPassword, roleId, hourlyRate: hourlyRate ?? null },
       select: {
         id: true,
         name: true,
         email: true,
+        hourlyRate: true,
         role: { select: { id: true, name: true, isAdmin: true } },
         createdAt: true,
       },
     });
-    return NextResponse.json(user, { status: 201 });
+    return NextResponse.json(
+      { ...user, hourlyRate: user.hourlyRate !== null ? Number(user.hourlyRate) : null },
+      { status: 201 }
+    );
   } catch {
     return NextResponse.json({ error: "Email already in use" }, { status: 409 });
   }
