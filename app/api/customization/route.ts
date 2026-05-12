@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 
 const SINGLETON_ID = "singleton";
@@ -41,5 +42,6 @@ export async function PATCH(request: Request) {
     },
   });
 
+  revalidateTag("business-config");
   return NextResponse.json(config);
 }

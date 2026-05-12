@@ -1,6 +1,6 @@
 import { AppShell } from "@/components/shared/app-shell";
 import { CustomizationProvider } from "@/components/customization/customization-context";
-import { prisma } from "@/lib/prisma";
+import { getBusinessConfig } from "@/lib/config-cache";
 import type { BusinessConfig } from "@/components/customization/customization-context";
 
 const DEFAULT_CONFIG: BusinessConfig = {
@@ -11,7 +11,7 @@ const DEFAULT_CONFIG: BusinessConfig = {
 };
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const dbConfig = await prisma.businessConfig.findUnique({ where: { id: "singleton" } });
+  const dbConfig = await getBusinessConfig();
   const config: BusinessConfig = dbConfig
     ? {
         id: dbConfig.id,
