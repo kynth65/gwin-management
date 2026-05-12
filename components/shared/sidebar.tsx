@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { signOut } from "next-auth/react";
 import { cn } from "@/lib/utils";
@@ -41,6 +41,15 @@ export function Sidebar({ onClose, isMobileOpen }: SidebarProps) {
   const { data: session, status } = useSession();
   const isAdmin = status === "authenticated" && session?.user?.isAdmin === true;
   const { config } = useCustomization();
+
+  // Tracks the href the user just clicked so the link turns active instantly
+  // before the route change completes. Cleared once pathname catches up.
+  const [pendingHref, setPendingHref] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Clear the optimistic active state once the real pathname matches
+    setPendingHref(null);
+  }, [pathname]);
 
   useEffect(() => {
     navItems.forEach(({ href }) => router.prefetch(href));
@@ -89,12 +98,16 @@ export function Sidebar({ onClose, isMobileOpen }: SidebarProps) {
       <nav className="flex-1 p-4 space-y-0.5 overflow-y-auto">
         {navItems.map(({ href, label, icon: Icon, adminOnly }) => {
           if (adminOnly && !isAdmin) return null;
-          const isActive = pathname.startsWith(href);
+          // Use pendingHref for instant feedback; fall back to real pathname
+          const isActive = pendingHref ? pendingHref === href : pathname.startsWith(href);
           return (
             <Link
               key={href}
               href={href}
-              onClick={onClose}
+              onClick={() => {
+                setPendingHref(href);
+                onClose?.();
+              }}
               className={cn(
                 "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
                 isActive
