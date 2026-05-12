@@ -16,6 +16,8 @@ import {
   Pencil,
   RotateCcw,
   ArchiveX,
+  Search,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { AssignableUser, TaskWithUsers, TaskStatus, TaskPriority } from "@/types";
@@ -182,9 +184,21 @@ export function TasksContent({
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<ActiveTab>("inbox");
   const [statusFilter, setStatusFilter] = useState<FilterStatus>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const currentTasks = activeTab === "inbox" ? inbox : sent;
-  const filteredTasks =
+
+  function matchesSearch(task: TaskWithUsers, q: string) {
+    const lower = q.toLowerCase();
+    return (
+      task.title.toLowerCase().includes(lower) ||
+      (task.description?.toLowerCase().includes(lower) ?? false) ||
+      task.sender.name.toLowerCase().includes(lower) ||
+      task.assignee.name.toLowerCase().includes(lower)
+    );
+  }
+
+  const statusFiltered =
     activeTab === "deleted"
       ? deleted
       : statusFilter === "ALL"
@@ -192,6 +206,11 @@ export function TasksContent({
       : statusFilter === "OVERDUE"
       ? currentTasks.filter((t) => getDueStatus(t.dueDate, t.status) === "overdue")
       : currentTasks.filter((t) => t.status === statusFilter);
+
+  const filteredTasks =
+    searchQuery.trim() === ""
+      ? statusFiltered
+      : statusFiltered.filter((t) => matchesSearch(t, searchQuery));
 
   const assignedCount = inbox.filter((t) => t.status === "ASSIGNED").length;
   const pendingApprovalCount = sent.filter(
@@ -241,17 +260,18 @@ export function TasksContent({
           <h1 className="text-2xl font-bold tracking-tight">Tasks</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Manage and track team assignments</p>
         </div>
-        <CreateTaskDialog users={users} onSuccess={() => router.refresh()} />
+        {isAdmin && <CreateTaskDialog users={users} onSuccess={() => router.refresh()} />}
       </div>
 
       {/* Tabs */}
       <div className="flex gap-1 bg-muted/40 p-1 rounded-lg w-fit border">
-        {(["inbox", "sent", "deleted"] as const).map((tab) => (
+        {(isAdmin ? (["inbox", "sent", "deleted"] as const) : (["inbox", "sent"] as const)).map((tab) => (
           <button
             key={tab}
             onClick={() => {
               setActiveTab(tab);
               setStatusFilter("ALL");
+              setSearchQuery("");
             }}
             className={cn(
               "px-4 py-1.5 rounded-md text-sm font-medium transition-all",
@@ -313,34 +333,58 @@ export function TasksContent({
         ))}
       </div>
 
-      {/* Status filter dropdown — hidden on Deleted tab */}
-      {activeTab !== "deleted" && (
-        <div className="flex items-center gap-2">
-          <label htmlFor="status-filter" className="text-sm text-muted-foreground shrink-0">
-            Filter:
-          </label>
-          <select
-            id="status-filter"
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
-            className="text-sm border border-border rounded-md px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer"
-          >
-            {FILTER_OPTIONS.map(({ label, value }) => {
-              const count =
-                value === "ALL"
-                  ? currentTasks.length
-                  : value === "OVERDUE"
-                  ? currentTasks.filter((t) => getDueStatus(t.dueDate, t.status) === "overdue").length
-                  : currentTasks.filter((t) => t.status === value).length;
-              return (
-                <option key={value} value={value}>
-                  {label} ({count})
-                </option>
-              );
-            })}
-          </select>
+      {/* Search + filter row */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        {/* Search input */}
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search tasks..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-8 pr-8 py-1.5 text-sm border border-border rounded-md bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
-      )}
+
+        {/* Status filter dropdown — hidden on Deleted tab */}
+        {activeTab !== "deleted" && (
+          <div className="flex items-center gap-2 shrink-0">
+            <label htmlFor="status-filter" className="text-sm text-muted-foreground shrink-0">
+              Filter:
+            </label>
+            <select
+              id="status-filter"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
+              className="text-sm border border-border rounded-md px-3 py-1.5 bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 cursor-pointer"
+            >
+              {FILTER_OPTIONS.map(({ label, value }) => {
+                const count =
+                  value === "ALL"
+                    ? currentTasks.length
+                    : value === "OVERDUE"
+                    ? currentTasks.filter((t) => getDueStatus(t.dueDate, t.status) === "overdue").length
+                    : currentTasks.filter((t) => t.status === value).length;
+                return (
+                  <option key={value} value={value}>
+                    {label} ({count})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
+        )}
+      </div>
 
       {/* Deleted tab info banner */}
       {activeTab === "deleted" && deleted.length > 0 && (
@@ -355,7 +399,7 @@ export function TasksContent({
       {/* Task table */}
       {filteredTasks.length === 0 ? (
         <div className="bg-card border rounded-xl">
-          <EmptyState tab={activeTab} filtered={activeTab !== "deleted" && statusFilter !== "ALL"} />
+          <EmptyState tab={activeTab} filtered={activeTab !== "deleted" && (statusFilter !== "ALL" || searchQuery.trim() !== "")} />
         </div>
       ) : activeTab === "deleted" ? (
         /* ── Deleted tasks table ── */

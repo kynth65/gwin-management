@@ -215,6 +215,28 @@ export function TaskDetail({ task, currentUserId, isAdmin }: TaskDetailProps) {
     }
   }
 
+  async function handleResume() {
+    setActionLoading("resume");
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "STARTED" }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to resume task");
+      }
+      setStatus("STARTED");
+      toast.success("Task resumed — back to in progress");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to resume task");
+    } finally {
+      setActionLoading(null);
+    }
+  }
+
   async function handlePostponeReview(requestId: string, action: "APPROVE" | "REJECT") {
     setActionLoading(`review-${action}`);
     try {
@@ -401,6 +423,27 @@ export function TaskDetail({ task, currentUserId, isAdmin }: TaskDetailProps) {
               }
             />
           </div>
+        </div>
+      )}
+
+      {/* Resume button — shown when task is postponed, for assignee or admin */}
+      {(isAssignee || isAdmin) && status === "POSTPONED" && (
+        <div className="bg-card border border-orange-200 dark:border-orange-800 rounded-xl p-4 space-y-3">
+          <p className="text-sm text-muted-foreground">
+            This task is postponed. The due date has been extended — resume when ready.
+          </p>
+          <button
+            onClick={handleResume}
+            disabled={!!actionLoading}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+          >
+            {actionLoading === "resume" ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Play className="w-4 h-4" />
+            )}
+            {actionLoading === "resume" ? "Resuming..." : "Resume Task"}
+          </button>
         </div>
       )}
 
