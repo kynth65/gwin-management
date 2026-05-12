@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Check, Pencil, Trash2, X } from "lucide-react";
 
@@ -21,21 +20,20 @@ type UserRow = {
 };
 
 export function UsersTable({
-  users: initial,
+  users,
+  setUsers,
   roles,
   currentUserId,
 }: {
   users: UserRow[];
+  setUsers: React.Dispatch<React.SetStateAction<UserRow[]>>;
   roles: RoleOption[];
   currentUserId: string;
 }) {
-  const [users, setUsers] = useState(initial);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [editingPayRate, setEditingPayRate] = useState<string | null>(null);
   const [payRateInput, setPayRateInput] = useState("");
   const [savingPayRate, setSavingPayRate] = useState<string | null>(null);
-  const router = useRouter();
-
   async function handleRoleChange(id: string, roleId: string) {
     const prev = users;
     const newRole = roles.find((r) => r.id === roleId);
@@ -98,7 +96,6 @@ export function UsersTable({
       }
       setUsers((u) => u.filter((x) => x.id !== id));
       toast.success("User deleted");
-      router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to delete user");
     } finally {

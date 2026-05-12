@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 
 type RoleOption = {
   id: string;
@@ -23,9 +22,14 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-export function AddUserForm({ roles }: { roles: RoleOption[] }) {
+export function AddUserForm({
+  roles,
+  onSuccess,
+}: {
+  roles: RoleOption[];
+  onSuccess?: (user: unknown) => void;
+}) {
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
 
   const {
     register,
@@ -34,7 +38,7 @@ export function AddUserForm({ roles }: { roles: RoleOption[] }) {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { roleId: roles[0]?.id ?? "", hourlyRate: "" },
+    defaultValues: { name: "", email: "", password: "", roleId: roles[0]?.id ?? "", hourlyRate: "" },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -58,8 +62,8 @@ export function AddUserForm({ roles }: { roles: RoleOption[] }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
       toast.success(`User "${data.name}" added successfully`);
-      reset({ roleId: roles[0]?.id ?? "", hourlyRate: "" });
-      router.refresh();
+      reset({ name: "", email: "", password: "", roleId: roles[0]?.id ?? "", hourlyRate: "" });
+      onSuccess?.(json);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to add user");
     } finally {
