@@ -4,78 +4,115 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
 import { formatDistanceToNow } from "date-fns";
-import { Megaphone, ClipboardList, Pin, Trash2, Loader2, Inbox } from "lucide-react";
+import {
+  Megaphone, Pin, Trash2, Loader2, Inbox,
+  ClipboardList, CheckCircle2, Clock, AlertCircle, Eye, XCircle, Play,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CreateAnnouncementDialog } from "./create-announcement-dialog";
-import type { AnnouncementWithAuthor, TaskWithUsers } from "@/types";
+import type { AnnouncementWithAuthor, AppNotification } from "@/types";
 
 type FeedItem =
   | { kind: "announcement"; createdAt: Date; data: AnnouncementWithAuthor }
-  | { kind: "task"; createdAt: Date; data: TaskWithUsers };
+  | { kind: "notification"; createdAt: Date; data: AppNotification };
 
-const PRIORITY_STYLES: Record<string, string> = {
-  HIGH: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
-  MEDIUM: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
-  LOW: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
+const NOTIF_STYLE: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
+  TASK_ASSIGNED:      { icon: ClipboardList, color: "text-blue-600 dark:text-blue-400",    bg: "bg-blue-100 dark:bg-blue-950" },
+  TASK_SEEN:          { icon: Eye,           color: "text-slate-500 dark:text-slate-400",   bg: "bg-slate-100 dark:bg-slate-800" },
+  TASK_STARTED:       { icon: Play,          color: "text-amber-600 dark:text-amber-400",   bg: "bg-amber-100 dark:bg-amber-950" },
+  TASK_COMPLETED:     { icon: CheckCircle2,  color: "text-green-600 dark:text-green-400",   bg: "bg-green-100 dark:bg-green-950" },
+  POSTPONE_REQUESTED: { icon: Clock,         color: "text-orange-600 dark:text-orange-400", bg: "bg-orange-100 dark:bg-orange-950" },
+  POSTPONE_APPROVED:  { icon: CheckCircle2,  color: "text-green-600 dark:text-green-400",   bg: "bg-green-100 dark:bg-green-950" },
+  POSTPONE_REJECTED:  { icon: XCircle,       color: "text-red-600 dark:text-red-400",       bg: "bg-red-100 dark:bg-red-950" },
+  TASK_OVERDUE:       { icon: AlertCircle,   color: "text-red-600 dark:text-red-400",       bg: "bg-red-100 dark:bg-red-950" },
 };
 
-export function WhatsNewFeed() {
+const TYPE_LABELS: Record<string, string> = {
+  TASK_ASSIGNED:      "New task assigned",
+  TASK_SEEN:          "Task seen",
+  TASK_STARTED:       "Task started",
+  TASK_COMPLETED:     "Task completed",
+  POSTPONE_REQUESTED: "Postpone requested",
+  POSTPONE_APPROVED:  "Postpone approved",
+  POSTPONE_REJECTED:  "Postpone rejected",
+  TASK_OVERDUE:       "Task overdue",
+};
+
+interface WhatsNewFeedProps {
+  initialAnnouncements?: AnnouncementWithAuthor[];
+}
+
+export function WhatsNewFeed({ initialAnnouncements = [] }: WhatsNewFeedProps) {
   const { data: session } = useSession();
-  const [items, setItems] = useState<FeedItem[]>([]);
-  const [loading, setLoading] = useState(true);
   const isAdmin = session?.user?.isAdmin === true;
+
+  const buildItems = useCallback(
+    (anns: AnnouncementWithAuthor[], notifs: AppNotification[]): FeedItem[] =>
+      [
+        ...anns.map((a) => ({ kind: "announcement" as const, createdAt: new Date(a.createdAt), data: a })),
+        ...notifs.map((n) => ({ kind: "notification" as const, createdAt: new Date(n.createdAt), data: n })),
+      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()),
+    []
+  );
+
+  const [items, setItems] = useState<FeedItem[]>(() => buildItems(initialAnnouncements, []));
+  const [announcements, setAnnouncements] = useState<AnnouncementWithAuthor[]>(initialAnnouncements);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [loading, setLoading] = useState(initialAnnouncements.length === 0);
 
   const fetchFeed = useCallback(async () => {
     try {
-      const [annRes, taskRes] = await Promise.all([
+      const [annRes, notifRes] = await Promise.all([
         fetch("/api/announcements"),
-        fetch("/api/tasks?type=inbox"),
+        fetch("/api/notifications"),
       ]);
-      const announcements: AnnouncementWithAuthor[] = annRes.ok ? await annRes.json() : [];
-      const allTasks: TaskWithUsers[] = taskRes.ok ? await taskRes.json() : [];
-
-      const newTasks = allTasks.filter(
-        (t) => t.status === "ASSIGNED" || t.status === "SEEN"
-      );
-
-      const merged: FeedItem[] = [
-        ...announcements.map((a) => ({
-          kind: "announcement" as const,
-          createdAt: new Date(a.createdAt),
-          data: a,
-        })),
-        ...newTasks.map((t) => ({
-          kind: "task" as const,
-          createdAt: new Date(t.createdAt),
-          data: t,
-        })),
-      ].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-      setItems(merged);
+      const freshAnns: AnnouncementWithAuthor[] = annRes.ok ? await annRes.json() : [];
+      const freshNotifs: AppNotification[] = notifRes.ok ? await notifRes.json() : [];
+      setAnnouncements(freshAnns);
+      setNotifications(freshNotifs);
+      setItems(buildItems(freshAnns, freshNotifs));
     } catch {
       // non-critical
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [buildItems]);
 
   useEffect(() => {
     if (session) fetchFeed();
   }, [session, fetchFeed]);
 
   async function deleteAnnouncement(id: string) {
-    const prev = items;
+    const prevItems = items;
+    const prevAnns = announcements;
     setItems((cur) => cur.filter((i) => !(i.kind === "announcement" && i.data.id === id)));
+    setAnnouncements((cur) => cur.filter((a) => a.id !== id));
     try {
       const res = await fetch(`/api/announcements/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error();
       toast.success("Announcement deleted");
     } catch {
-      setItems(prev);
+      setItems(prevItems);
+      setAnnouncements(prevAnns);
       toast.error("Failed to delete");
     }
   }
+
+  async function markNotifRead(id: string) {
+    const patch = (n: AppNotification) => (n.id === id ? { ...n, read: true } : n);
+    setNotifications((prev) => prev.map(patch));
+    setItems((prev) =>
+      prev.map((item) =>
+        item.kind === "notification" && item.data.id === id
+          ? { ...item, data: { ...item.data, read: true } }
+          : item
+      )
+    );
+    await fetch(`/api/notifications/${id}`, { method: "PATCH" });
+  }
+
+  const unreadCount = notifications.filter((n) => !n.read).length;
 
   return (
     <div className="bg-card border rounded-xl overflow-hidden">
@@ -84,6 +121,11 @@ export function WhatsNewFeed() {
         <h2 className="text-sm font-semibold flex items-center gap-2">
           <Megaphone className="h-4 w-4 text-primary" />
           What&apos;s New
+          {unreadCount > 0 && (
+            <span className="bg-primary text-primary-foreground text-[10px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+              {unreadCount > 9 ? "9+" : unreadCount}
+            </span>
+          )}
         </h2>
         {isAdmin && <CreateAnnouncementDialog onCreated={fetchFeed} />}
       </div>
@@ -109,7 +151,11 @@ export function WhatsNewFeed() {
                 onDelete={deleteAnnouncement}
               />
             ) : (
-              <TaskCard key={item.data.id} item={item.data} />
+              <NotificationCard
+                key={item.data.id}
+                item={item.data}
+                onMarkRead={markNotifRead}
+              />
             )
           )
         )}
@@ -171,45 +217,51 @@ function AnnouncementCard({
   );
 }
 
-function TaskCard({ item }: { item: TaskWithUsers }) {
+function NotificationCard({
+  item,
+  onMarkRead,
+}: {
+  item: AppNotification;
+  onMarkRead: (id: string) => void;
+}) {
+  const style = NOTIF_STYLE[item.type] ?? NOTIF_STYLE.TASK_ASSIGNED;
+  const Icon = style.icon;
+
   return (
-    <div className="px-4 py-3 hover:bg-muted/30 transition-colors">
+    <div
+      className={cn(
+        "px-4 py-3 hover:bg-muted/30 transition-colors cursor-pointer",
+        !item.read && "bg-primary/5"
+      )}
+      onClick={() => { if (!item.read) onMarkRead(item.id); }}
+    >
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 shrink-0 w-7 h-7 rounded-full bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
-          <ClipboardList className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+        <div className={cn("mt-0.5 shrink-0 w-7 h-7 rounded-full flex items-center justify-center", style.bg)}>
+          <Icon className={cn("h-3.5 w-3.5", style.color)} />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <p className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 uppercase tracking-wide">
-              New Task Assigned
+            <p className={cn("text-[10px] font-semibold uppercase tracking-wide", style.color)}>
+              {TYPE_LABELS[item.type] ?? item.type}
             </p>
-            <span className="text-[10px] text-muted-foreground shrink-0 whitespace-nowrap">
-              {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
-            </span>
-          </div>
-          <p className="text-sm font-semibold text-foreground mt-0.5 leading-snug">{item.title}</p>
-          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-            <span
-              className={cn(
-                "text-[10px] font-medium px-1.5 py-0.5 rounded-full uppercase tracking-wide",
-                PRIORITY_STYLES[item.priority]
-              )}
-            >
-              {item.priority}
-            </span>
-            <span className="text-[11px] text-muted-foreground">From: {item.sender.name}</span>
-            {item.dueDate && (
-              <span className="text-[11px] text-muted-foreground">
-                Due: {new Date(item.dueDate).toLocaleDateString()}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                {formatDistanceToNow(new Date(item.createdAt), { addSuffix: true })}
               </span>
-            )}
+              {!item.read && (
+                <span className="w-1.5 h-1.5 rounded-full bg-primary block" />
+              )}
+            </div>
           </div>
-          <Link
-            href={`/tasks/${item.id}`}
-            className="text-xs text-primary hover:underline mt-1.5 inline-block"
-          >
-            View task →
-          </Link>
+          <p className="text-sm text-foreground mt-0.5 leading-snug">{item.message}</p>
+          {item.taskId && (
+            <Link
+              href={`/tasks/${item.taskId}`}
+              className="text-xs text-primary hover:underline mt-1.5 inline-block"
+            >
+              View task →
+            </Link>
+          )}
         </div>
       </div>
     </div>

@@ -1,10 +1,9 @@
-import { ShoppingCart, FileSpreadsheet, RefreshCw, AlertCircle } from "lucide-react";
+import { ShoppingCart, RefreshCw, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 
 interface DashboardCardsProps {
   totalOrders: number;
-  pendingExports: number;
   lastSyncAt: string;
   overdueTasks: number;
 }
@@ -74,25 +73,16 @@ function StatCard({
 
 export function DashboardCards({
   totalOrders,
-  pendingExports,
   lastSyncAt,
   overdueTasks,
 }: DashboardCardsProps) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
       <StatCard
         title="Total Orders"
         value={totalOrders}
         icon={ShoppingCart}
         description="All synced orders"
-      />
-      <StatCard
-        title="Pending Exports"
-        value={pendingExports}
-        icon={FileSpreadsheet}
-        description={
-          pendingExports > 0 ? "Awaiting export to sheet" : "All exports up to date"
-        }
       />
       <StatCard
         title="Last Sync"
