@@ -19,11 +19,13 @@ async function getTasksData(userId: string, isAdmin: boolean) {
     prisma.task.findMany({
       where: { assigneeId: userId, deletedAt: null },
       orderBy: { createdAt: "desc" },
+      take: 100,
       include: taskUserInclude,
     }),
     prisma.task.findMany({
       where: { senderId: userId, deletedAt: null },
       orderBy: { createdAt: "desc" },
+      take: 100,
       include: {
         ...taskUserInclude,
         // Only pending postpone requests so the list can show "Approval Needed"
@@ -43,6 +45,7 @@ async function getTasksData(userId: string, isAdmin: boolean) {
         ? { deletedAt: { not: null } }
         : { senderId: userId, deletedAt: { not: null } },
       orderBy: { deletedAt: "desc" },
+      take: 50,
       include: taskUserInclude,
     }),
   ]);

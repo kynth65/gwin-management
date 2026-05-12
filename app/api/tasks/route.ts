@@ -43,19 +43,15 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session.user.isAdmin) return NextResponse.json({ error: "Only admins can create tasks" }, { status: 403 });
 
   const { title, description, assigneeId, priority, dueDate, imageUrls } = await req.json();
 
   if (!title?.trim()) return NextResponse.json({ error: "Title is required" }, { status: 400 });
   if (!assigneeId) return NextResponse.json({ error: "Assignee is required" }, { status: 400 });
 
-  const assignee = await prisma.user.findUnique({ where: { id: assigneeId }, select: { role: { select: { isAdmin: true } } } });
+  const assignee = await prisma.user.findUnique({ where: { id: assigneeId }, select: { id: true } });
   if (!assignee) return NextResponse.json({ error: "Assignee not found" }, { status: 404 });
-
-  // STAFF cannot assign tasks to ADMIN
-  if (!session.user.isAdmin && assignee.role.isAdmin) {
-    return NextResponse.json({ error: "Staff members cannot assign tasks to admins" }, { status: 403 });
-  }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const task = await (prisma.task.create as any)({
