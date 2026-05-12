@@ -65,9 +65,16 @@ export function NotificationBell() {
   }
 
   useEffect(() => {
-    fetchNotifications();
+    // Defer initial fetch until browser is idle so it doesn't compete with page data
+    const id = typeof requestIdleCallback !== "undefined"
+      ? requestIdleCallback(() => fetchNotifications())
+      : setTimeout(fetchNotifications, 1000);
     const interval = setInterval(fetchNotifications, 30000);
-    return () => clearInterval(interval);
+    return () => {
+      if (typeof requestIdleCallback !== "undefined") cancelIdleCallback(id as number);
+      else clearTimeout(id as ReturnType<typeof setTimeout>);
+      clearInterval(interval);
+    };
   }, []);
 
   // Close on outside click
