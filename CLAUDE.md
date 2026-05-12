@@ -27,8 +27,9 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 4. `lib/google-sheets.ts` — Google Sheets integration via `googleapis`; appends rows to a sheet using a base64-encoded service account key (`GOOGLE_SERVICE_ACCOUNT_KEY`)
 5. `lib/amazon.ts` — Amazon SP-API helpers
 6. `lib/auth.ts` — NextAuth config; JWT includes `id`, `role`, and `isAdmin` from `UserRole`
-7. `app/api/` — thin route handlers that call lib functions
-8. `triggers/` — Trigger.dev background jobs (`shopify-sync` every 6h, `excel-export` on demand, `overdue-tasks` scheduled job that creates `TASK_OVERDUE` notifications)
+7. `lib/config-cache.ts` — `getBusinessConfig()` cached via `unstable_cache` with a 5-min TTL and `"business-config"` tag; the customization PATCH route calls `revalidateTag("business-config")` to bust it
+8. `app/api/` — thin route handlers that call lib functions
+9. `triggers/` — Trigger.dev background jobs (`shopify-sync` every 6h, `excel-export` on demand, `overdue-tasks` scheduled job that creates `TASK_OVERDUE` notifications)
 
 **Key design:** Shopify products are stored as one DB row **per variant** (not per product). `externalId` is the variant ID, not the product ID. The `@@unique([externalId, storeId])` constraint enables idempotent upserts. Note: the products UI page has been removed — the `Product` model remains solely for Shopify sync data storage.
 
@@ -60,6 +61,15 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 | `app/api/profile/` | Update current user's name |
 | `app/api/profile/password/` | Change current user's password |
 
+## Tasks UI
+
+`components/tasks/tasks-content.tsx` drives the `/tasks` page. Key behaviors:
+- **Search bar** — filters by title, description, sender name, or assignee name; resets when switching tabs.
+- **Admin-only controls** — Create Task button and Deleted tab are hidden from non-admin users.
+- **Resume Task** (`components/tasks/task-detail.tsx`) — shown on POSTPONED tasks for the assignee or admin; PATCHes status back to `STARTED`.
+
+`components/shared/sidebar.tsx` uses `pendingHref` state for instant active-link feedback — the clicked link lights up immediately before the route change completes, then clears once `pathname` catches up.
+
 ## Time Tracking UI
 
 `components/time/time-content.tsx` drives the `/time` page. It has three main tabs: **Time** (clock-in/out), **Activity** (session history), and **Reports** (aggregated view). The Reports tab has two sub-tabs:
@@ -69,10 +79,17 @@ Always run `pnpm build` after changes and fix any TypeScript errors before consi
 
 `buildMemberReports` (same file) aggregates `TimeEntry` rows into per-member totals. When `isAdmin && reportAll` an optional `allStaff` list is passed so members with zero hours still appear as rows.
 
+## Dashboard
+
+`app/(app)/dashboard/page.tsx` uses granular `Suspense` streaming: `CardSection`, `DashboardTable`, and `DashboardFeed` are separate async server components so each streams independently. `overdueTasks` in the stats card is scoped — admins see all overdue tasks, staff see only their own. The `pendingExports` card has been removed.
+
+`WhatsNewFeed` (`components/dashboard/whats-new-feed.tsx`) merges **announcements** and **notifications** into a single chronological feed. It accepts `initialAnnouncements` as an SSR prop (fetched in `DashboardFeed`) so the feed renders without a client-side waterfall. Notifications are styled per type using the `NOTIF_STYLE` map.
+
 ## Authorization
 
 - `session.user.isAdmin` (from `UserRole.isAdmin`) gates admin-only API actions.
-- Staff members cannot assign tasks to admin users — enforced in `app/api/tasks/route.ts`.
+- **Only admins can create tasks** — enforced in `app/api/tasks/route.ts` (POST returns 403 for non-admins).
+- The Tasks UI hides the Create Task button and the Deleted tab from non-admin users.
 - Middleware protects: `/dashboard`, `/orders`, `/automations`, `/settings`, `/users`, `/tasks`, `/time`.
 
 ## Pricing Logic
@@ -85,7 +102,7 @@ All pricing math is in `lib/excel.ts`:
 ## Database Schema Notes
 
 - `UserRole` — named roles with `isAdmin` flag; every `User` belongs to one role via `roleId`
-- `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `ASSIGNED | SEEN | STARTED | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`; `deletedAt` (nullable) enables soft delete — queries must filter `deletedAt: null` for active tasks; the Tasks UI has an Inbox, Sent, and Deleted tab
+- `Task` — has `sender` (creator) and `assignee` relations to `User`; statuses: `ASSIGNED | SEEN | STARTED | COMPLETED | POSTPONED`; priorities: `LOW | MEDIUM | HIGH`; `deletedAt` (nullable) enables soft delete — queries must filter `deletedAt: null` for active tasks; the Tasks UI has an Inbox, Sent, and Deleted tab (Deleted is admin-only); task list queries are capped (`take: 100` inbox/sent, `take: 50` deleted)
 - `PostponeRequest` — linked to a `Task`; submitted by the assignee, reviewed by an admin; statuses: `PENDING | APPROVED | REJECTED`; tracks `extensionDays`, optional `assignerNote`, and reviewer metadata
 - `Notification` — per-user in-app notifications; types: `TASK_ASSIGNED | TASK_SEEN | TASK_STARTED | TASK_COMPLETED | POSTPONE_REQUESTED | POSTPONE_APPROVED | POSTPONE_REJECTED | TASK_OVERDUE`; has `read` flag; linked to a `taskId` for deep-linking
 - `TimeEntry` — tracks per-user work sessions; `clockIn` (DateTime) and `clockOut` (nullable DateTime); duration calculated on clock-out; linked to `User`; `User.hourlyRate` (Decimal, nullable) is used in the Reports Pay sub-tab to calculate estimated pay
@@ -93,6 +110,10 @@ All pricing math is in `lib/excel.ts`:
 - `Order.lineItems` is stored as `Json` (raw Shopify line items array)
 - `AutomationLog` is append-only — never updated, only created; `SHEET_EXPORT` type logs Google Sheets writes
 - Multi-store: every `Product` and `Order` belongs to a `Store`; store platform is `SHOPIFY | AMAZON`
+
+## Users Page
+
+`components/users/users-page-client.tsx` is a client wrapper that holds shared `users` state between `UsersTable` and `AddUserForm`. The server page (`app/(app)/users/page.tsx`) fetches users + roles and passes them as props; the client component handles optimistic list updates without a full page refresh.
 
 ## Google Sheets Export
 
